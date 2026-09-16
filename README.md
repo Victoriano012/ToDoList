@@ -5,7 +5,7 @@ Nested to-do list. Next.js + Auth.js (Google) + Neon Postgres, deployed on Verce
 - Tasks nest arbitrarily; the arrow collapses a task's subtasks.
 - Completed tasks drop below a thin line at the end of their list; tap the line to show/hide them (most recently finished first).
 - Drag the ⋯ handle to reorder a task or drop it onto another task to nest it.
-- Per-task menu (⋯): add subtask, move, turn into a heading (no circle), delete.
+- Per-task menu (⋯): add subtask, turn into a heading (no circle), delete.
 - Keyboard: Enter = new task, Tab / Shift+Tab = indent / outdent, Alt+↑/↓ = move, Backspace on empty = delete.
 
 ## Development
