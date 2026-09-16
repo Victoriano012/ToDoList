@@ -474,10 +474,13 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
   const activeTasks = active(parentId);
   const doneTasks = done(parentId);
   const shown = shownDone.has(doneKey(parentId));
+  // Last element of this list; a spacer after its subtree would double up
+  // with the parent's (or float the "Add task" button at root).
+  const lastId = doneTasks.length && !shown ? null : (shown ? doneTasks : activeTasks).at(-1)?.id;
   return (
     <ul>
       {activeTasks.map((t) => (
-        <Row key={t.id} task={t} depth={depth} />
+        <Row key={t.id} task={t} depth={depth} last={t.id === lastId} />
       ))}
       {doneTasks.length > 0 && (
         <li style={{ paddingLeft: depth * INDENT }}>
@@ -494,12 +497,12 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
           </button>
         </li>
       )}
-      {shown && doneTasks.map((t) => <Row key={t.id} task={t} depth={depth} />)}
+      {shown && doneTasks.map((t) => <Row key={t.id} task={t} depth={depth} last={t.id === lastId} />)}
     </ul>
   );
 }
 
-function Row({ task: t, depth }: { task: Task; depth: number }) {
+function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolean }) {
   const ctx = useContext(TasksCtx);
   const { focusRef, draggedRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -649,7 +652,12 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
 
         {ctx.menuId === t.id && <Menu task={t} />}
       </div>
-      {hasChildren && !t.collapsed && <List parentId={t.id} depth={depth + 1} />}
+      {hasChildren && !t.collapsed && (
+        <>
+          <List parentId={t.id} depth={depth + 1} />
+          {!last && <div className="h-10" />}
+        </>
+      )}
     </li>
   );
 }
