@@ -25,8 +25,6 @@ type Ctx = {
   shownDone: Set<string>;
   toggleShownDone: (parentId: string | null) => void;
   focusRef: React.MutableRefObject<string | null>;
-  menuId: string | null;
-  setMenuId: (id: string | null) => void;
   patch: (id: string, p: TaskPatch) => void;
   add: (parentId: string | null, afterId?: string | null, atTop?: boolean) => void;
   remove: (id: string) => void;
@@ -38,7 +36,6 @@ type Ctx = {
   saveTitle: (id: string, title: string) => void;
   drag: Drag | null;
   beginDrag: (id: string, e: React.PointerEvent<HTMLElement>) => void;
-  draggedRef: React.MutableRefObject<boolean>;
 };
 
 const TasksCtx = createContext<Ctx>(null!);
@@ -78,13 +75,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);
   const [shownDone, setShownDone] = useState<Set<string>>(new Set());
-  const [menuId, setMenuId] = useState<string | null>(null);
   const focusRef = useRef<string | null>(null);
   const pending = useRef(0);
   const titleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
-  const draggedRef = useRef(false); // suppresses the click that follows a drag
   const tasksRef = useRef(tasks);
   useEffect(() => {
     tasksRef.current = tasks;
@@ -346,7 +341,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const startY = e.clientY;
       let started = false;
       let raf = 0;
-      draggedRef.current = false; // touch drags don't always emit a trailing click
       handle.setPointerCapture(e.pointerId);
 
       const update = (y: number) => {
@@ -370,8 +364,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         if (!started) {
           if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
           started = true;
-          draggedRef.current = true;
-          setMenuId(null);
           raf = requestAnimationFrame(tick);
         }
         update(ev.clientY);
@@ -404,22 +396,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     });
   }, []);
 
-  useEffect(() => {
-    if (!menuId) return;
-    // Listeners live on document (same node as React's root), so the menu is
-    // identified by data-menu rather than by stopping propagation.
-    const onPointer = (e: PointerEvent) => {
-      if (!(e.target as Element).closest("[data-menu]")) setMenuId(null);
-    };
-    const onKey = () => setMenuId(null);
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuId]);
-
   const ctx: Ctx = {
     tasks,
     active,
@@ -427,8 +403,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     shownDone,
     toggleShownDone,
     focusRef,
-    menuId,
-    setMenuId,
     patch,
     add,
     remove,
@@ -440,7 +414,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     saveTitle,
     drag,
     beginDrag,
-    draggedRef,
   };
   const dragged = drag && tasks.find((t) => t.id === drag.id);
 
@@ -504,7 +477,7 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
 
 function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolean }) {
   const ctx = useContext(TasksCtx);
-  const { focusRef, draggedRef } = ctx;
+  const { focusRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
   const isDone = !!t.doneAt;
@@ -564,7 +537,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
       <div
         data-row={t.id}
         data-done={isDone || undefined}
-        className={`group relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
+        className={`group flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: depth * INDENT }}
       >
         {hasChildren ? (
@@ -628,29 +601,48 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
         <button
           type="button"
           tabIndex={-1}
-          data-menu
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) })}
+          className={`hidden h-10 w-8 shrink-0 items-center justify-center text-lg group-focus-within:flex sm:group-hover:flex ${
+            t.checkable ? "text-muted" : "text-accent"
+          }`}
+          aria-label="Toggle heading"
+        >
+          #
+        </button>
+
+        <button
+          type="button"
+          tabIndex={-1}
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => ctx.remove(t.id)}
+          className="hidden h-10 w-8 shrink-0 items-center justify-center text-muted hover:text-red-600 group-focus-within:flex sm:group-hover:flex dark:hover:text-red-400"
+          aria-label="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          tabIndex={-1}
           onPointerDown={(e) => {
             if (!isDone) ctx.beginDrag(t.id, e);
           }}
           onContextMenu={(e) => e.preventDefault()}
-          onClick={() => {
-            if (draggedRef.current) {
-              draggedRef.current = false;
-              return;
-            }
-            ctx.setMenuId(ctx.menuId === t.id ? null : t.id);
-          }}
-          className="flex h-10 w-8 shrink-0 touch-none select-none items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-          aria-label="Task options (drag to move)"
+          className="flex h-10 w-8 shrink-0 touch-none select-none items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100"
+          aria-label="Drag to move"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-            <circle cx="2" cy="7" r="1.3" />
-            <circle cx="7" cy="7" r="1.3" />
-            <circle cx="12" cy="7" r="1.3" />
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="2.5" cy="2" r="1.3" />
+            <circle cx="7.5" cy="2" r="1.3" />
+            <circle cx="2.5" cy="7" r="1.3" />
+            <circle cx="7.5" cy="7" r="1.3" />
+            <circle cx="2.5" cy="12" r="1.3" />
+            <circle cx="7.5" cy="12" r="1.3" />
           </svg>
         </button>
-
-        {ctx.menuId === t.id && <Menu task={t} />}
       </div>
       {hasChildren && !t.collapsed && (
         <>
@@ -659,37 +651,5 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
         </>
       )}
     </li>
-  );
-}
-
-function Menu({ task: t }: { task: Task }) {
-  const ctx = useContext(TasksCtx);
-  const act = (fn: () => void) => () => {
-    ctx.setMenuId(null);
-    fn();
-  };
-  const items: [string, () => void, string?][] = [
-    [
-      t.checkable ? "Make heading" : "Make task",
-      () => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) }),
-    ],
-    ["Delete", () => ctx.remove(t.id), "text-red-600 dark:text-red-400"],
-  ];
-  return (
-    <div
-      data-menu
-      className="absolute right-2 top-9 z-10 w-40 overflow-hidden rounded-lg border border-line bg-background py-1 shadow-lg"
-    >
-      {items.map(([label, fn, cls]) => (
-        <button
-          key={label}
-          type="button"
-          onClick={act(fn)}
-          className={`block w-full px-3 py-2 text-left text-sm hover:bg-hover ${cls ?? ""}`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
   );
 }
