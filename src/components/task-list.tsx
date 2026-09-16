@@ -226,6 +226,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       if (!prev) return;
       const bottom = Math.max(0, ...(byParent.get(prev.id) ?? []).map((s) => s.position)) + 1;
       if (prev.collapsed) patch(prev.id, { collapsed: false });
+      focusRef.current = id; // row remounts under its new parent
       patch(id, { parentId: prev.id, position: bottom });
     },
     [tasks, active, byParent, patch],
@@ -240,6 +241,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const i = siblings.findIndex((s) => s.id === parent.id);
       const next = siblings[i + 1];
       const position = next ? (parent.position + next.position) / 2 : parent.position + 1;
+      focusRef.current = id;
       patch(id, { parentId: parent.parentId, position });
     },
     [tasks, active, patch],
@@ -270,12 +272,17 @@ export default function TaskList({ initial }: { initial: Task[] }) {
 
   useEffect(() => {
     if (!menuId) return;
-    const close = () => setMenuId(null);
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", close);
+    // Listeners live on document (same node as React's root), so the menu is
+    // identified by data-menu rather than by stopping propagation.
+    const onPointer = (e: PointerEvent) => {
+      if (!(e.target as Element).closest("[data-menu]")) setMenuId(null);
+    };
+    const onKey = () => setMenuId(null);
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", close);
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
     };
   }, [menuId]);
 
@@ -455,7 +462,7 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
         <button
           type="button"
           tabIndex={-1}
-          onPointerDown={(e) => e.stopPropagation()}
+          data-menu
           onClick={() => ctx.setMenuId(ctx.menuId === t.id ? null : t.id)}
           className="flex h-10 w-8 shrink-0 items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
           aria-label="Task options"
@@ -494,7 +501,7 @@ function Menu({ task: t }: { task: Task }) {
   ];
   return (
     <div
-      onPointerDown={(e) => e.stopPropagation()}
+      data-menu
       className="absolute right-2 top-9 z-10 w-40 overflow-hidden rounded-lg border border-line bg-background py-1 shadow-lg"
     >
       {items.map(([label, fn, cls]) => (
