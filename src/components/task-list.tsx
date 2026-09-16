@@ -15,6 +15,9 @@ import type { Task, TaskPatch } from "@/lib/types";
 
 const INDENT = 22;
 
+type DropZone = "before" | "after" | "into";
+type Drag = { id: string; y: number; target: { id: string; zone: DropZone } | null };
+
 type Ctx = {
   tasks: Task[];
   active: (parentId: string | null) => Task[];
@@ -33,10 +36,43 @@ type Ctx = {
   move: (id: string, dir: -1 | 1) => void;
   focusNeighbor: (id: string, dir: -1 | 1) => void;
   saveTitle: (id: string, title: string) => void;
+  drag: Drag | null;
+  beginDrag: (id: string, e: React.PointerEvent<HTMLElement>) => void;
+  draggedRef: React.MutableRefObject<boolean>;
 };
 
 const TasksCtx = createContext<Ctx>(null!);
 const doneKey = (parentId: string | null) => parentId ?? "root";
+
+function descendantsOf(tasks: Task[], id: string) {
+  const set = new Set([id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of tasks) {
+      if (t.parentId && set.has(t.parentId) && !set.has(t.id)) {
+        set.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return set;
+}
+
+// Which visible row is under clientY, and whether the pointer is on its top
+// quarter (drop before), bottom quarter (drop after) or middle (nest into).
+function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
+  const skip = descendantsOf(tasks, dragId);
+  for (const el of document.querySelectorAll<HTMLElement>("[data-row]")) {
+    const id = el.dataset.row!;
+    if (skip.has(id) || el.dataset.done) continue;
+    const r = el.getBoundingClientRect();
+    if (y < r.top || y > r.bottom) continue;
+    const f = (y - r.top) / r.height;
+    return { id, zone: f < 0.25 ? "before" : f > 0.75 ? "after" : "into" };
+  }
+  return null;
+}
 
 export default function TaskList({ initial }: { initial: Task[] }) {
   const router = useRouter();
@@ -46,6 +82,13 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   const focusRef = useRef<string | null>(null);
   const pending = useRef(0);
   const titleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const draggedRef = useRef(false); // suppresses the click that follows a drag
+  const tasksRef = useRef(tasks);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
 
   // Server data changed (router.refresh) and nothing is in flight → adopt it.
   useEffect(() => {
@@ -260,6 +303,97 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     [tasks, active, patch],
   );
 
+  const drop = useCallback(
+    (d: Drag) => {
+      if (!d.target) return;
+      const ts = tasksRef.current;
+      const target = ts.find((x) => x.id === d.target!.id)!;
+      const childrenOf = (pid: string | null) =>
+        ts.filter((x) => x.parentId === pid && !x.doneAt && x.id !== d.id).sort((a, b) => a.position - b.position);
+      let parentId: string | null;
+      let position: number;
+      if (d.target.zone === "into") {
+        parentId = target.id;
+        position = Math.max(0, ...ts.filter((x) => x.parentId === target.id).map((x) => x.position)) + 1;
+        if (target.collapsed) patch(target.id, { collapsed: false });
+      } else if (d.target.zone === "before") {
+        parentId = target.parentId;
+        const sib = childrenOf(parentId);
+        const prev = sib[sib.findIndex((x) => x.id === target.id) - 1];
+        position = prev ? (prev.position + target.position) / 2 : target.position - 1;
+      } else {
+        const kids = childrenOf(target.id);
+        if (kids.length && !target.collapsed) {
+          // Below an expanded parent means "first subtask".
+          parentId = target.id;
+          position = kids[0].position - 1;
+        } else {
+          parentId = target.parentId;
+          const sib = childrenOf(parentId);
+          const next = sib[sib.findIndex((x) => x.id === target.id) + 1];
+          position = next ? (target.position + next.position) / 2 : target.position + 1;
+        }
+      }
+      patch(d.id, { parentId, position });
+    },
+    [patch],
+  );
+
+  const beginDrag = useCallback(
+    (id: string, e: React.PointerEvent<HTMLElement>) => {
+      const handle = e.currentTarget;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let started = false;
+      let raf = 0;
+      draggedRef.current = false; // touch drags don't always emit a trailing click
+      handle.setPointerCapture(e.pointerId);
+
+      const update = (y: number) => {
+        const d: Drag = { id, y, target: findTarget(tasksRef.current, id, y) };
+        dragRef.current = d;
+        setDrag(d);
+      };
+      const tick = () => {
+        const d = dragRef.current;
+        if (d) {
+          const m = 70;
+          const dy = d.y < m ? -(m - d.y) / 5 : d.y > innerHeight - m ? (d.y - (innerHeight - m)) / 5 : 0;
+          if (dy) {
+            scrollBy(0, dy);
+            update(d.y);
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      const onMove = (ev: PointerEvent) => {
+        if (!started) {
+          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+          started = true;
+          draggedRef.current = true;
+          setMenuId(null);
+          raf = requestAnimationFrame(tick);
+        }
+        update(ev.clientY);
+      };
+      const end = (commit: boolean) => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onCancel);
+        cancelAnimationFrame(raf);
+        if (commit && dragRef.current) drop(dragRef.current);
+        dragRef.current = null;
+        setDrag(null);
+      };
+      const onUp = () => end(true);
+      const onCancel = () => end(false);
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onCancel);
+    },
+    [drop],
+  );
+
   const toggleShownDone = useCallback((parentId: string | null) => {
     setShownDone((s) => {
       const n = new Set(s);
@@ -304,11 +438,25 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     move,
     focusNeighbor,
     saveTitle,
+    drag,
+    beginDrag,
+    draggedRef,
   };
+  const dragged = drag && tasks.find((t) => t.id === drag.id);
 
   return (
     <TasksCtx.Provider value={ctx}>
-      <List parentId={null} depth={0} />
+      <div className={drag ? "select-none" : ""}>
+        <List parentId={null} depth={0} />
+      </div>
+      {dragged && (
+        <div
+          className="pointer-events-none fixed left-6 z-50 max-w-[75vw] truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
+          style={{ top: drag.y - 44 }}
+        >
+          {dragged.title || (dragged.checkable ? "New task" : "Heading")}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => add(null)}
@@ -336,11 +484,11 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
-            className="group flex h-7 w-full items-center gap-2 px-2"
+            className="group flex h-4 w-full items-center gap-2 px-2"
             aria-label={shown ? "Hide completed" : "Show completed"}
           >
             <span className="h-px flex-1 bg-line group-hover:bg-muted" />
-            <span className="text-xs text-muted">
+            <span className="text-[10px] leading-none text-muted">
               {shown ? "hide" : doneTasks.length}
             </span>
           </button>
@@ -353,10 +501,21 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
 
 function Row({ task: t, depth }: { task: Task; depth: number }) {
   const ctx = useContext(TasksCtx);
-  const { focusRef } = ctx;
+  const { focusRef, draggedRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
   const isDone = !!t.doneAt;
+  const zone = ctx.drag?.target?.id === t.id ? ctx.drag.target.zone : null;
+  const dropCls =
+    zone === "before"
+      ? "shadow-[inset_0_2px_0_0_var(--accent)]"
+      : zone === "after"
+        ? "shadow-[inset_0_-2px_0_0_var(--accent)]"
+        : zone === "into"
+          ? "bg-accent/15"
+          : ctx.drag?.id === t.id
+            ? "opacity-40"
+            : "";
 
   useEffect(() => {
     const el = ref.current;
@@ -400,7 +559,9 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
   return (
     <li>
       <div
-        className="group relative flex items-start gap-1 rounded-md hover:bg-hover"
+        data-row={t.id}
+        data-done={isDone || undefined}
+        className={`group relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: depth * INDENT }}
       >
         {hasChildren ? (
@@ -465,9 +626,19 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
           type="button"
           tabIndex={-1}
           data-menu
-          onClick={() => ctx.setMenuId(ctx.menuId === t.id ? null : t.id)}
-          className="flex h-10 w-8 shrink-0 items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-          aria-label="Task options"
+          onPointerDown={(e) => {
+            if (!isDone) ctx.beginDrag(t.id, e);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+          onClick={() => {
+            if (draggedRef.current) {
+              draggedRef.current = false;
+              return;
+            }
+            ctx.setMenuId(ctx.menuId === t.id ? null : t.id);
+          }}
+          className="flex h-10 w-8 shrink-0 touch-none select-none items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+          aria-label="Task options (drag to move)"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
             <circle cx="2" cy="7" r="1.3" />
