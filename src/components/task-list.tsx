@@ -491,8 +491,6 @@ function Menu({ task: t }: { task: Task }) {
   };
   const items: [string, () => void, string?][] = [
     ["Add subtask", () => ctx.add(t.id)],
-    ["Indent", () => ctx.indent(t.id)],
-    ["Outdent", () => ctx.outdent(t.id)],
     ["Move up", () => ctx.move(t.id, -1)],
     ["Move down", () => ctx.move(t.id, 1)],
     [
