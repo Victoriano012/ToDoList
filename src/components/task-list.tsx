@@ -403,24 +403,26 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
         className="group relative flex items-start gap-1 rounded-md hover:bg-hover"
         style={{ paddingLeft: depth * INDENT }}
       >
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
-          className={`flex h-10 w-6 shrink-0 items-center justify-center text-muted ${
-            hasChildren ? "" : "invisible"
-          }`}
-          aria-label={t.collapsed ? "Expand" : "Collapse"}
-        >
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            className={`transition-transform ${t.collapsed ? "" : "rotate-90"}`}
+        {hasChildren ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
+            className="flex h-10 w-6 shrink-0 items-center justify-center text-muted"
+            aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
-            <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-        </button>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              className={`transition-transform ${t.collapsed ? "" : "rotate-90"}`}
+            >
+              <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+        ) : (
+          <span className="w-1 shrink-0" />
+        )}
 
         {t.checkable ? (
           <button
