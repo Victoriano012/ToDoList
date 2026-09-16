@@ -36,6 +36,7 @@ type Ctx = {
   saveTitle: (id: string, title: string) => void;
   drag: Drag | null;
   beginDrag: (id: string, e: React.PointerEvent<HTMLElement>) => void;
+  draggedRef: React.MutableRefObject<boolean>;
 };
 
 const TasksCtx = createContext<Ctx>(null!);
@@ -80,6 +81,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   const titleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const draggedRef = useRef(false); // suppresses the click that follows a drag
   const tasksRef = useRef(tasks);
   useEffect(() => {
     tasksRef.current = tasks;
@@ -334,14 +336,17 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     [patch],
   );
 
+  // Long-press on a row starts a drag; moving first (scroll / text selection) cancels it.
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLElement>) => {
-      const handle = e.currentTarget;
+      if ((e.target as Element).closest("button")) return;
+      const row = e.currentTarget;
+      const pointerId = e.pointerId;
       const startX = e.clientX;
       const startY = e.clientY;
       let started = false;
       let raf = 0;
-      handle.setPointerCapture(e.pointerId);
+      draggedRef.current = false;
 
       const update = (y: number) => {
         const d: Drag = { id, y, target: findTarget(tasksRef.current, id, y) };
@@ -360,28 +365,43 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         }
         raf = requestAnimationFrame(tick);
       };
+      // touch-action can't change mid-gesture, so page scrolling is blocked here.
+      const block = (ev: Event) => ev.preventDefault();
+      const start = () => {
+        started = true;
+        draggedRef.current = true;
+        (document.activeElement as HTMLElement | null)?.blur();
+        getSelection()?.removeAllRanges();
+        row.setPointerCapture(pointerId);
+        document.addEventListener("touchmove", block, { passive: false });
+        document.addEventListener("contextmenu", block);
+        raf = requestAnimationFrame(tick);
+        update(startY);
+      };
+      const timer = setTimeout(start, 350);
+
       const onMove = (ev: PointerEvent) => {
-        if (!started) {
-          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
-          started = true;
-          raf = requestAnimationFrame(tick);
-        }
-        update(ev.clientY);
+        if (ev.pointerId !== pointerId) return;
+        if (started) update(ev.clientY);
+        else if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 8) end(false);
       };
       const end = (commit: boolean) => {
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onCancel);
+        clearTimeout(timer);
         cancelAnimationFrame(raf);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onCancel);
+        document.removeEventListener("touchmove", block);
+        document.removeEventListener("contextmenu", block);
         if (commit && dragRef.current) drop(dragRef.current);
         dragRef.current = null;
         setDrag(null);
       };
       const onUp = () => end(true);
       const onCancel = () => end(false);
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onCancel);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onCancel);
     },
     [drop],
   );
@@ -414,6 +434,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     saveTitle,
     drag,
     beginDrag,
+    draggedRef,
   };
   const dragged = drag && tasks.find((t) => t.id === drag.id);
 
@@ -477,7 +498,7 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
 
 function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolean }) {
   const ctx = useContext(TasksCtx);
-  const { focusRef } = ctx;
+  const { focusRef, draggedRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
   const isDone = !!t.doneAt;
@@ -537,7 +558,10 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
       <div
         data-row={t.id}
         data-done={isDone || undefined}
-        className={`group flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
+        onPointerDown={(e) => {
+          if (!isDone) ctx.beginDrag(t.id, e);
+        }}
+        className={`flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: depth * INDENT }}
       >
         {hasChildren ? (
@@ -593,7 +617,13 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           placeholder={t.checkable ? "New task" : "Heading"}
           onChange={(e) => ctx.saveTitle(t.id, e.target.value.replace(/\n/g, ""))}
           onKeyDown={onKeyDown}
-          className={`min-h-10 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none placeholder:text-muted/60 ${
+          onClick={(e) => {
+            if (draggedRef.current) {
+              draggedRef.current = false;
+              e.currentTarget.blur();
+            }
+          }}
+          className={`min-h-10 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [-webkit-touch-callout:none] placeholder:text-muted/60 ${
             t.checkable ? "" : "font-semibold"
           } ${isDone ? "text-muted line-through" : ""}`}
         />
@@ -603,7 +633,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) })}
-          className={`hidden h-10 w-8 shrink-0 items-center justify-center text-lg group-focus-within:flex sm:group-hover:flex ${
+          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg ${
             t.checkable ? "text-muted" : "text-accent"
           }`}
           aria-label="Toggle heading"
@@ -616,31 +646,11 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => ctx.remove(t.id)}
-          className="hidden h-10 w-8 shrink-0 items-center justify-center text-muted hover:text-red-600 group-focus-within:flex sm:group-hover:flex dark:hover:text-red-400"
+          className="flex h-10 w-8 shrink-0 items-center justify-center text-muted hover:text-red-600 dark:hover:text-red-400"
           aria-label="Delete"
         >
           <svg width="12" height="12" viewBox="0 0 12 12">
             <path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-        </button>
-
-        <button
-          type="button"
-          tabIndex={-1}
-          onPointerDown={(e) => {
-            if (!isDone) ctx.beginDrag(t.id, e);
-          }}
-          onContextMenu={(e) => e.preventDefault()}
-          className="flex h-10 w-8 shrink-0 touch-none select-none items-center justify-center text-muted sm:opacity-0 sm:group-hover:opacity-100"
-          aria-label="Drag to move"
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-            <circle cx="2.5" cy="2" r="1.3" />
-            <circle cx="7.5" cy="2" r="1.3" />
-            <circle cx="2.5" cy="7" r="1.3" />
-            <circle cx="7.5" cy="7" r="1.3" />
-            <circle cx="2.5" cy="12" r="1.3" />
-            <circle cx="7.5" cy="12" r="1.3" />
           </svg>
         </button>
       </div>
