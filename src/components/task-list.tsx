@@ -443,7 +443,7 @@ function Row({ task: t, depth }: { task: Task; depth: number }) {
             </span>
           </button>
         ) : (
-          <span className="w-7 shrink-0" />
+          <span className="w-1 shrink-0" />
         )}
 
         <textarea
