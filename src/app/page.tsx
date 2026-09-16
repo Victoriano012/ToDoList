@@ -9,7 +9,7 @@ export default async function Home() {
   if (!session?.user) {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
-        <h1 className="text-2xl font-semibold">Tasks</h1>
+        <h1 className="text-2xl font-semibold">ToDo</h1>
         <form
           action={async () => {
             "use server";
@@ -31,7 +31,7 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-2xl px-3 pb-24 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
       <header className="mb-4 flex items-baseline justify-between px-2">
-        <h1 className="text-xl font-semibold">Tasks</h1>
+        <h1 className="text-xl font-semibold">ToDo</h1>
         <form
           action={async () => {
             "use server";

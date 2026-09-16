@@ -1,4 +1,4 @@
-# Tasks
+# ToDo
 
 Nested to-do list. Next.js + Auth.js (Google) + Neon Postgres, deployed on Vercel.
 

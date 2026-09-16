@@ -4,9 +4,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tasks",
+  title: "ToDo",
   description: "Nested to-do list",
-  appleWebApp: { capable: true, title: "Tasks", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "ToDo", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
