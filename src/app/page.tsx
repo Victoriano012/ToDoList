@@ -18,7 +18,7 @@ export default async function Home() {
         >
           <button
             type="submit"
-            className="flex h-10 items-center gap-3 rounded-full border border-[#747775] bg-white px-4 font-sans text-sm font-medium text-[#1f1f1f] hover:bg-[#f7f7f7] dark:border-[#8e918f] dark:bg-[#131314] dark:text-[#e3e3e3] dark:hover:bg-[#1e1f20]"
+            className="flex h-10 w-40 items-center justify-center gap-3 rounded-full border border-[#747775] bg-white font-sans text-lg font-medium sm:w-48 text-[#1f1f1f] hover:bg-[#f7f7f7] dark:border-[#8e918f] dark:bg-[#131314] dark:text-[#e3e3e3] dark:hover:bg-[#1e1f20]"
           >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
               <path
