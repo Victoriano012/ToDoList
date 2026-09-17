@@ -369,19 +369,18 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const { zone } = d.target;
       const childrenOf = (pid: string | null) =>
         ts.filter((x) => x.parentId === pid && !x.doneAt && x.id !== d.id).sort((a, b) => a.position - b.position);
-      const lastPos = (pid: string | null) =>
-        Math.max(0, ...ts.filter((x) => x.parentId === pid).map((x) => x.position)) + 1;
       let parentId: string | null;
       let position: number;
       if (zone === "end") {
         parentId = null;
-        position = lastPos(null);
+        position = Math.max(0, ...ts.filter((x) => x.parentId === null).map((x) => x.position)) + 1;
       } else {
         const target = ts.find((x) => x.id === d.target!.id)!;
         const kids = childrenOf(target.id);
         if (zone === "into") {
+          // Becomes the first subtask.
           parentId = target.id;
-          position = lastPos(target.id);
+          position = (kids[0]?.position ?? 1) - 1;
           if (target.collapsed) patch(target.id, { collapsed: false });
         } else if (zone === "before") {
           parentId = target.parentId;
