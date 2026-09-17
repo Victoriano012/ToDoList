@@ -473,7 +473,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       <button
         type="button"
         onClick={() => add(null)}
-        className="mt-10 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
+        className="mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
         style={{ paddingLeft: GUTTER }}
       >
         <span className="w-6 text-center text-lg leading-none">+</span>
