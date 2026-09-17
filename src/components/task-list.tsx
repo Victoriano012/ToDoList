@@ -27,6 +27,7 @@ type DropZone = "before" | "after" | "into" | "end";
 type Mark = { x: number; y: number; w: number };
 type Drag = {
   id: string;
+  x: number;
   y: number;
   target: { id: string | null; zone: DropZone; mark?: Mark } | null;
 };
@@ -463,8 +464,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       // scrollY alone misses the shift that closing it undoes.
       const vvOffset = () => visualViewport?.offsetTop ?? 0;
 
-      const update = (y: number) => {
-        const d: Drag = { id, y, target: findTarget(tasksRef.current, id, y) };
+      const update = (x: number, y: number) => {
+        const d: Drag = { id, x, y, target: findTarget(tasksRef.current, id, y) };
         dragRef.current = d;
         setDrag(d);
       };
@@ -475,7 +476,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
           const dy = d.y < m ? -(m - d.y) / 5 : d.y > innerHeight - m ? (d.y - (innerHeight - m)) / 5 : 0;
           if (dy) {
             scrollBy(0, dy);
-            update(d.y);
+            update(d.x, d.y);
           } else if (performance.now() - startTime < 600 && scrollY + vvOffset() !== pinnedTop) {
             // Keep the list still while the keyboard closes.
             scrollTo(0, pinnedTop - vvOffset());
@@ -492,7 +493,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         started = true;
         startTime = performance.now();
         pinnedTop = scrollY + vvOffset();
-        update(startY);
+        update(startX, startY);
         if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
         row.setPointerCapture(pointerId);
         document.addEventListener("touchmove", block, { passive: false });
@@ -504,11 +505,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
 
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
-        if (started) update(ev.clientY);
+        if (started) update(ev.clientX, ev.clientY);
         else if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > (mouse ? 6 : 8)) {
           if (mouse && draggable) {
             start();
-            update(ev.clientY);
+            update(ev.clientX, ev.clientY);
           } else end(false);
         }
       };
@@ -590,8 +591,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       {drag?.target?.mark && <DropMark {...drag.target.mark} />}
       {dragged && (
         <div
-          className="pointer-events-none fixed left-6 z-50 max-w-[75vw] truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
-          style={{ top: drag.y - 44 }}
+          className="pointer-events-none fixed z-50 max-w-[75vw] -translate-x-1/2 truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
+          style={{ left: drag.x, top: drag.y - 44 }}
         >
           {dragged.title || (dragged.checkable ? "New task" : "Heading")}
         </div>
