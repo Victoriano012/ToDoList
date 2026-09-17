@@ -612,11 +612,10 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
-            className="group flex h-4 w-full items-center gap-2 px-2"
+            className="group flex h-4 w-full items-center px-2"
             aria-label={shown ? "Hide completed" : "Show completed"}
           >
             <span className="h-px flex-1 bg-line group-hover:bg-muted" />
-            {!shown && <span className="text-[10px] leading-none text-muted">{doneTasks.length}</span>}
           </button>
         </li>
       )}
