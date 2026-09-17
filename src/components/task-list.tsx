@@ -641,8 +641,8 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) })}
-          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg text-muted ${
-            t.checkable ? "" : "font-bold text-foreground"
+          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg ${
+            t.checkable ? "text-muted" : "font-bold text-foreground"
           }`}
           aria-label="Toggle heading"
         >
