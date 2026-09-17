@@ -19,6 +19,9 @@ import type { Task, TaskPatch } from "@/lib/types";
 // subtasks adds a GUTTER at its left for the collapse arrow.
 const INDENT = 16;
 const GUTTER = 20;
+// The row's highlight box (and the drop indicator, which spans it) reaches
+// PAD left of the arrow/circle: the row is pulled left by PAD and padded back.
+const PAD = 8;
 
 // "end" targets the "+ Add task" row and the space below the last row (last
 // root task).
@@ -615,8 +618,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         // Acts as the row after the last root task: dropping "before" it puts
         // the task at the end of the list, with the usual top-edge indicator.
         data-add
-        className="mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
-        style={{ paddingLeft: 0 }}
+        className="mt-5 flex h-10 items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
+        style={{ marginLeft: -PAD, paddingLeft: PAD, width: `calc(100% + ${PAD}px)` }}
       >
         <span className="w-6 text-center text-lg leading-none">+</span>
         <span>Add task</span>
@@ -727,14 +730,15 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         data-done={isDone || undefined}
         onPointerDown={(e) => ctx.beginDrag(t.id, e)}
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
-        style={{ marginLeft: indent, paddingLeft: hasChildren ? GUTTER : 0 }}
+        style={{ marginLeft: indent - PAD, paddingLeft: PAD + (hasChildren ? GUTTER : 0) }}
       >
         {hasChildren && (
           <button
             type="button"
             tabIndex={-1}
             onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
-            className="absolute top-0 left-0 flex h-10 w-5 items-center justify-center text-muted"
+            className="absolute top-0 flex h-10 w-5 items-center justify-center text-muted"
+            style={{ left: PAD }}
             aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
             {t.collapsed && hidden > 0 ? (
