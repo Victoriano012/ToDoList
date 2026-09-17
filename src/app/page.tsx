@@ -53,7 +53,7 @@ export default async function Home() {
               strokeLinecap="round"
               strokeLinejoin="round"
               aria-hidden="true"
-              className="relative -top-px"
+              className="relative -top-[3px]"
             >
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
