@@ -689,7 +689,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
           <span className="w-1 shrink-0" />
         )}
 
-        {editing ? (
+        {editing && (
           <textarea
             id={`title-${t.id}`}
             ref={ref}
@@ -699,11 +699,14 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             onChange={(e) => ctx.saveTitle(t.id, e.target.value.replace(/\n/g, ""))}
             onKeyDown={onKeyDown}
             onBlur={() => ctx.stopEditing(t.id)}
+            // Hidden (not unmounted) during a drag: the touch keeps targeting
+            // it, and iOS's long-press must not find an editable under the finger.
             className={`${titleCls} resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted/60 ${
-              ctx.drag ? "select-none" : ""
+              ctx.drag ? "hidden" : ""
             }`}
           />
-        ) : (
+        )}
+        {(!editing || ctx.drag) && (
           <div
             data-title
             className={`${titleCls} min-w-0 select-none whitespace-pre-wrap break-words [-webkit-touch-callout:none]`}
