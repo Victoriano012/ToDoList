@@ -19,10 +19,9 @@ import type { Task, TaskPatch } from "@/lib/types";
 const INDENT = 16;
 const GUTTER = 20;
 
-// "after-block" targets the spacer under a parent's subtasks (sibling after the
-// parent); "end" targets the "+ Add task" row and the space below the last row
-// (last root task).
-type DropZone = "before" | "after" | "into" | "after-block" | "end";
+// "end" targets the "+ Add task" row and the space below the last row (last
+// root task).
+type DropZone = "before" | "after" | "into" | "end";
 // `above` is the row whose bottom edge touches a "before" target's top edge; the
 // indicator is drawn along both borders so the insertion point reads as one.
 type Drag = {
@@ -126,11 +125,19 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     if (!next && x.parentId === null) return { id: null, zone: "end" };
     return { id, zone: "after" };
   }
+  // The spacer under a parent's subtasks means "sibling after the parent", which
+  // is the same insertion point as "before" the parent's next sibling.
   for (const el of document.querySelectorAll<HTMLElement>("[data-gap]")) {
     const id = el.dataset.gap!;
     if (skip.has(id) || el.closest("[data-closed]")) continue;
     const r = el.getBoundingClientRect();
-    if (y >= r.top && y <= r.bottom) return { id, zone: "after-block" };
+    if (y < r.top || y > r.bottom) continue;
+    const parent = byId(id)!;
+    const next = rows.find((row) => {
+      const t = byId(row.dataset.row)!;
+      return t.parentId === parent.parentId && t.position > parent.position;
+    });
+    return next ? before(next.dataset.row!) : null;
   }
   const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? -Infinity;
   return y > bottom ? { id: null, zone: "end" } : null;
@@ -406,7 +413,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
           parentId = target.id;
           position = kids[0].position - 1;
         } else {
-          // "after" a leaf, or "after-block" (the spacer under its subtasks).
+          // "after" a leaf.
           parentId = target.parentId;
           const sib = childrenOf(parentId);
           const next = sib[sib.findIndex((x) => x.id === target.id) + 1];
@@ -810,7 +817,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
       <Collapsible open={hasChildren && !t.collapsed}>
         <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
         {!last && (
-          <div data-gap={t.id} className={`h-10 ${zone === "after-block" ? topLine : ""}`} />
+          <div data-gap={t.id} className="h-10" />
         )}
       </Collapsible>
     </li>
