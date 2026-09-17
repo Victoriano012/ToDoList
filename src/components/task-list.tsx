@@ -494,9 +494,7 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
             aria-label={shown ? "Hide completed" : "Show completed"}
           >
             <span className="h-px flex-1 bg-line group-hover:bg-muted" />
-            <span className="text-[10px] leading-none text-muted">
-              {shown ? "hide" : doneTasks.length}
-            </span>
+            {!shown && <span className="text-[10px] leading-none text-muted">{doneTasks.length}</span>}
           </button>
         </li>
       )}
