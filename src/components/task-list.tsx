@@ -13,7 +13,10 @@ import {
 import { createTask, deleteTask, updateTask } from "@/lib/tasks";
 import type { Task, TaskPatch } from "@/lib/types";
 
-const INDENT = 22;
+// Children indent by INDENT; the collapse arrow hangs in a GUTTER left of every
+// row so a parent's text and its children's text never line up.
+const INDENT = 32;
+const GUTTER = 20;
 
 type DropZone = "before" | "after" | "into";
 type Drag = { id: string; y: number; target: { id: string; zone: DropZone } | null };
@@ -366,14 +369,17 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         raf = requestAnimationFrame(tick);
       };
       // touch-action can't change mid-gesture, so page scrolling is blocked here.
+      // touchend is blocked so the release doesn't turn into a click that focuses
+      // the textarea (keyboard popping up mid-list). Focus is otherwise left alone
+      // so an open keyboard doesn't close and shift the page while dragging.
       const block = (ev: Event) => ev.preventDefault();
       const start = () => {
         started = true;
         draggedRef.current = true;
-        (document.activeElement as HTMLElement | null)?.blur();
         getSelection()?.removeAllRanges();
         row.setPointerCapture(pointerId);
         document.addEventListener("touchmove", block, { passive: false });
+        document.addEventListener("touchend", block, { passive: false, once: true });
         document.addEventListener("contextmenu", block);
         raf = requestAnimationFrame(tick);
         update(startY);
@@ -392,6 +398,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onCancel);
         document.removeEventListener("touchmove", block);
+        // pointerup precedes touchend, so let the blocker see it before removing.
+        setTimeout(() => document.removeEventListener("touchend", block));
         document.removeEventListener("contextmenu", block);
         if (commit && dragRef.current) drop(dragRef.current);
         dragRef.current = null;
@@ -454,9 +462,10 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       <button
         type="button"
         onClick={() => add(null)}
-        className="mt-1 flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-muted hover:bg-hover"
+        className="mt-10 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
+        style={{ paddingLeft: GUTTER }}
       >
-        <span className="w-5 text-center text-lg leading-none">+</span>
+        <span className="w-6 text-center text-lg leading-none">+</span>
         <span>Add task</span>
       </button>
     </TasksCtx.Provider>
@@ -477,7 +486,7 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
         <Row key={t.id} task={t} depth={depth} last={t.id === lastId} />
       ))}
       {doneTasks.length > 0 && (
-        <li style={{ paddingLeft: depth * INDENT }}>
+        <li style={{ paddingLeft: depth * INDENT + GUTTER }}>
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
@@ -561,15 +570,16 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
         onPointerDown={(e) => {
           if (!isDone) ctx.beginDrag(t.id, e);
         }}
-        className={`flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
-        style={{ paddingLeft: depth * INDENT }}
+        className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
+        style={{ paddingLeft: depth * INDENT + GUTTER }}
       >
-        {hasChildren ? (
+        {hasChildren && (
           <button
             type="button"
             tabIndex={-1}
             onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
-            className="flex h-10 w-6 shrink-0 items-center justify-center text-muted"
+            className="absolute top-0 flex h-10 w-5 items-center justify-center text-muted"
+            style={{ left: depth * INDENT }}
             aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
             <svg
@@ -581,8 +591,6 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
               <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
             </svg>
           </button>
-        ) : (
-          <span className="w-1 shrink-0" />
         )}
 
         {t.checkable ? (
@@ -590,7 +598,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
             type="button"
             tabIndex={-1}
             onClick={() => ctx.toggleDone(t.id)}
-            className="flex h-10 w-7 shrink-0 items-center justify-center"
+            className="flex h-10 w-6 shrink-0 items-center justify-center"
             aria-label={isDone ? "Mark not done" : "Mark done"}
           >
             <span
@@ -633,8 +641,8 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
           onClick={() => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) })}
-          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg ${
-            t.checkable ? "text-muted" : "text-accent"
+          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg text-muted ${
+            t.checkable ? "" : "font-bold text-foreground"
           }`}
           aria-label="Toggle heading"
         >
