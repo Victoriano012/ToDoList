@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { createTask, deleteTask, updateTask } from "@/lib/tasks";
 import type { Task, TaskPatch } from "@/lib/types";
 
@@ -27,6 +28,9 @@ type Ctx = {
   done: (parentId: string | null) => Task[];
   shownDone: Set<string>;
   toggleShownDone: (parentId: string | null) => void;
+  editingId: string | null;
+  edit: (id: string) => void;
+  stopEditing: (id: string) => void;
   focusRef: React.MutableRefObject<string | null>;
   patch: (id: string, p: TaskPatch) => void;
   add: (parentId: string | null, afterId?: string | null, atTop?: boolean) => void;
@@ -39,7 +43,6 @@ type Ctx = {
   saveTitle: (id: string, title: string) => void;
   drag: Drag | null;
   beginDrag: (id: string, e: React.PointerEvent<HTMLElement>) => void;
-  draggedRef: React.MutableRefObject<boolean>;
 };
 
 const TasksCtx = createContext<Ctx>(null!);
@@ -96,11 +99,23 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   const [tasks, setTasks] = useState(initial);
   const [shownDone, setShownDone] = useState<Set<string>>(new Set());
   const focusRef = useRef<string | null>(null);
+  // Only the row being edited renders a <textarea>; the others are plain
+  // divs, so iOS's native long-press can't select a word and open the keyboard.
+  const dragRef = useRef<Drag | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const edit = useCallback((id: string) => {
+    focusRef.current = id;
+    setEditingId(id);
+  }, []);
+  // While a drag is active the textarea must stay mounted: touch events keep
+  // targeting the element under the finger, and a detached node would swallow
+  // them. Editing ends in beginDrag's end() instead.
+  const stopEditing = useCallback((id: string) => {
+    if (!dragRef.current) setEditingId((cur) => (cur === id ? null : cur));
+  }, []);
   const pending = useRef(0);
   const titleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [drag, setDrag] = useState<Drag | null>(null);
-  const dragRef = useRef<Drag | null>(null);
-  const draggedRef = useRef(false); // suppresses the click that follows a drag
   const tasksRef = useRef(tasks);
   useEffect(() => {
     tasksRef.current = tasks;
@@ -205,11 +220,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         collapsed: false,
         position,
       };
-      focusRef.current = task.id;
+      edit(task.id);
       setTasks((ts) => [...ts, task]);
       run(() => createTask(task));
     },
-    [active, byParent, run],
+    [active, byParent, run, edit],
   );
 
   // Flattened list of rows currently visible on screen, in reading order.
@@ -235,16 +250,16 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     (id: string, dir: -1 | 1) => {
       const i = visibleOrder.findIndex((t) => t.id === id);
       const target = visibleOrder[i + dir];
-      if (target) document.getElementById(`title-${target.id}`)?.focus();
+      if (target) edit(target.id);
     },
-    [visibleOrder],
+    [visibleOrder, edit],
   );
 
   const remove = useCallback(
     (id: string) => {
       const i = visibleOrder.findIndex((t) => t.id === id);
       const prev = visibleOrder[i - 1];
-      if (prev) focusRef.current = prev.id;
+      if (prev) edit(prev.id);
       setTasks((ts) => {
         const gone = new Set([id]);
         let grew = true;
@@ -261,7 +276,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       });
       run(() => deleteTask(id));
     },
-    [run, visibleOrder],
+    [run, visibleOrder, edit],
   );
 
   const toggleDone = useCallback(
@@ -285,10 +300,10 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       if (!prev) return;
       const bottom = Math.max(0, ...(byParent.get(prev.id) ?? []).map((s) => s.position)) + 1;
       if (prev.collapsed) patch(prev.id, { collapsed: false });
-      focusRef.current = id; // row remounts under its new parent
+      edit(id); // row remounts under its new parent
       patch(id, { parentId: prev.id, position: bottom });
     },
-    [tasks, active, byParent, patch],
+    [tasks, active, byParent, patch, edit],
   );
 
   const outdent = useCallback(
@@ -300,10 +315,10 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const i = siblings.findIndex((s) => s.id === parent.id);
       const next = siblings[i + 1];
       const position = next ? (parent.position + next.position) / 2 : parent.position + 1;
-      focusRef.current = id;
+      edit(id);
       patch(id, { parentId: parent.parentId, position });
     },
-    [tasks, active, patch],
+    [tasks, active, patch, edit],
   );
 
   const move = useCallback(
@@ -356,14 +371,13 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   );
 
   // Long-press on a row starts a drag; moving first (scroll / text selection)
-  // cancels it. A plain tap focuses the row's textarea ourselves, because
-  // unfocused textareas are user-select: none (so iOS's native long-press does
-  // nothing on them) and iOS then won't focus them on tap.
+  // cancels it. A plain tap on the title swaps it for a textarea and focuses it
+  // synchronously, so the keyboard opens (it counts as a user gesture).
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as Element).closest("button")) return;
       const row = e.currentTarget;
-      const textarea = (e.target as Element).closest("textarea");
+      const title = (e.target as Element).closest("[data-title]");
       const draggable = !tasksRef.current.find((x) => x.id === id)?.doneAt;
       const pointerId = e.pointerId;
       const startX = e.clientX;
@@ -372,7 +386,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       let raf = 0;
       let startTime = 0;
       let pinnedY = 0;
-      draggedRef.current = false;
 
       const update = (y: number) => {
         const d: Drag = { id, y, target: findTarget(tasksRef.current, id, y) };
@@ -401,16 +414,15 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const block = (ev: Event) => ev.preventDefault();
       const start = () => {
         started = true;
-        draggedRef.current = true;
         startTime = performance.now();
         pinnedY = scrollY;
+        update(startY);
         if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
         row.setPointerCapture(pointerId);
         document.addEventListener("touchmove", block, { passive: false });
         document.addEventListener("touchend", block, { passive: false, once: true });
         document.addEventListener("contextmenu", block);
         raf = requestAnimationFrame(tick);
-        update(startY);
       };
       const timer = draggable ? setTimeout(start, 350) : undefined;
 
@@ -432,13 +444,16 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         if (commit && dragRef.current) drop(dragRef.current);
         dragRef.current = null;
         setDrag(null);
+        if (started) setEditingId(null);
       };
       const onUp = () => {
         const tap = !started;
         end(true);
-        if (tap && textarea && document.activeElement !== textarea) {
-          textarea.focus();
-          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        if (tap && title) {
+          flushSync(() => edit(id));
+          const el = document.getElementById(`title-${id}`) as HTMLTextAreaElement | null;
+          el?.focus();
+          el?.setSelectionRange(el.value.length, el.value.length);
         }
       };
       const onCancel = () => end(false);
@@ -446,7 +461,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onCancel);
     },
-    [drop],
+    [drop, edit],
   );
 
   const toggleShownDone = useCallback((parentId: string | null) => {
@@ -465,6 +480,9 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     done,
     shownDone,
     toggleShownDone,
+    editingId,
+    edit,
+    stopEditing,
     focusRef,
     patch,
     add,
@@ -477,7 +495,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     saveTitle,
     drag,
     beginDrag,
-    draggedRef,
   };
   const dragged = drag && tasks.find((t) => t.id === drag.id);
 
@@ -540,7 +557,8 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
 
 function Row({ task: t, indent, last }: { task: Task; indent: number; last: boolean }) {
   const ctx = useContext(TasksCtx);
-  const { focusRef, draggedRef } = ctx;
+  const { focusRef } = ctx;
+  const editing = ctx.editingId === t.id;
   const ref = useRef<HTMLTextAreaElement>(null);
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
   const hidden = t.collapsed ? countSubtasks(ctx.tasks, t.id) : 0;
@@ -559,7 +577,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
 
   useEffect(() => {
     if (ref.current) fit(ref.current);
-  }, [t.title]);
+  }, [t.title, editing]);
 
   // Width changes too (heading toggle, indent after a drop, orientation).
   useEffect(() => {
@@ -573,7 +591,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [editing]);
 
   useEffect(() => {
     if (focusRef.current === t.id && ref.current) {
@@ -583,6 +601,10 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
       el.setSelectionRange(el.value.length, el.value.length);
     }
   });
+
+  const titleCls = `min-h-10 flex-1 py-2 text-base leading-6 ${t.checkable ? "" : "font-semibold"} ${
+    isDone ? "text-muted line-through" : ""
+  }`;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter") {
@@ -666,24 +688,28 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
           <span className="w-1 shrink-0" />
         )}
 
-        <textarea
-          id={`title-${t.id}`}
-          ref={ref}
-          rows={1}
-          value={t.title}
-          placeholder={t.checkable ? "New task" : "Heading"}
-          onChange={(e) => ctx.saveTitle(t.id, e.target.value.replace(/\n/g, ""))}
-          onKeyDown={onKeyDown}
-          onClick={(e) => {
-            if (draggedRef.current) {
-              draggedRef.current = false;
-              e.currentTarget.blur();
-            }
-          }}
-          className={`min-h-10 flex-1 resize-none overflow-hidden bg-transparent py-2 text-base leading-6 outline-none [-webkit-touch-callout:none] placeholder:text-muted/60 ${
-            ctx.drag ? "select-none" : "select-none focus:select-auto"
-          } ${t.checkable ? "" : "font-semibold"} ${isDone ? "text-muted line-through" : ""}`}
-        />
+        {editing ? (
+          <textarea
+            id={`title-${t.id}`}
+            ref={ref}
+            rows={1}
+            value={t.title}
+            placeholder={t.checkable ? "New task" : "Heading"}
+            onChange={(e) => ctx.saveTitle(t.id, e.target.value.replace(/\n/g, ""))}
+            onKeyDown={onKeyDown}
+            onBlur={() => ctx.stopEditing(t.id)}
+            className={`${titleCls} resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted/60 ${
+              ctx.drag ? "select-none" : ""
+            }`}
+          />
+        ) : (
+          <div
+            data-title
+            className={`${titleCls} min-w-0 select-none whitespace-pre-wrap break-words [-webkit-touch-callout:none]`}
+          >
+            {t.title || <span className="text-muted/60">{t.checkable ? "New task" : "Heading"}</span>}
+          </div>
+        )}
 
         <button
           type="button"
