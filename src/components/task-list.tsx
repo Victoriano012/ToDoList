@@ -15,7 +15,8 @@ import { createTask, deleteTask, updateTask } from "@/lib/tasks";
 import type { Task, TaskPatch } from "@/lib/types";
 
 // Children of a heading indent by INDENT, children of a checkable task by
-// 2 * INDENT; the collapse arrow hangs in a GUTTER left of every row.
+// 2 * INDENT (the row's margin, so its highlight starts there); the collapse
+// arrow hangs in a GUTTER at the left of every row.
 const INDENT = 16;
 const GUTTER = 20;
 
@@ -103,7 +104,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const byId = (id: string | undefined) => tasks.find((t) => t.id === id);
   const markAt = (el: HTMLElement, edge: "top" | "bottom"): Mark => {
     const r = el.getBoundingClientRect();
-    const x = r.left + parseFloat(el.style.paddingLeft);
+    const x = r.left + GUTTER;
     return { x, y: r[edge], w: r.right - x };
   };
   const before = (id: string): Drag["target"] => {
@@ -627,7 +628,7 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
         <Row key={t.id} task={t} indent={indent} last={t.id === lastId} />
       ))}
       {doneTasks.length > 0 && (
-        <li style={{ paddingLeft: indent + GUTTER }}>
+        <li style={{ marginLeft: indent, paddingLeft: GUTTER }}>
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
@@ -715,15 +716,14 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         data-done={isDone || undefined}
         onPointerDown={(e) => ctx.beginDrag(t.id, e)}
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
-        style={{ paddingLeft: indent + GUTTER }}
+        style={{ marginLeft: indent, paddingLeft: GUTTER }}
       >
         {hasChildren && (
           <button
             type="button"
             tabIndex={-1}
             onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
-            className="absolute top-0 flex h-10 w-5 items-center justify-center text-muted"
-            style={{ left: indent }}
+            className="absolute top-0 left-0 flex h-10 w-5 items-center justify-center text-muted"
             aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
             {t.collapsed && hidden > 0 ? (
