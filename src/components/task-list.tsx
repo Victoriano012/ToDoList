@@ -824,12 +824,13 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
   );
 }
 
-// The drop indicator: an overlay hugging the row's right rounded corner whose
-// inset shadow draws the line on its top or bottom edge, starting at `left`.
+// The drop indicator: a rounded overlay inside the row, from `left` to the
+// right edge, whose inset shadow draws the line along its top or bottom
+// contour (curving at both ends).
 function DropLine({ left, className }: { left: number; className: string }) {
   return (
     <div
-      className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-md ${className}`}
+      className={`pointer-events-none absolute inset-y-0 right-0 rounded-md ${className}`}
       style={{ left }}
     />
   );
