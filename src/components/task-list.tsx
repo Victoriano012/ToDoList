@@ -15,8 +15,8 @@ import { createTask, deleteTask, updateTask } from "@/lib/tasks";
 import type { Task, TaskPatch } from "@/lib/types";
 
 // Children of a heading indent by INDENT, children of a checkable task by
-// 2 * INDENT (the row's margin, so its highlight starts there); the collapse
-// arrow hangs in a GUTTER at the left of every row.
+// 2 * INDENT (the row's margin, so its highlight starts there); a row with
+// subtasks adds a GUTTER at its left for the collapse arrow.
 const INDENT = 16;
 const GUTTER = 20;
 
@@ -108,7 +108,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const byId = (id: string | undefined) => tasks.find((t) => t.id === id);
   const markAt = (el: HTMLElement, edge: "top" | "bottom"): Mark => {
     const r = el.getBoundingClientRect();
-    const x = r.left + GUTTER;
+    const x = r.left + parseFloat(el.style.paddingLeft);
     return { x, y: r[edge], w: r.right - x };
   };
   const before = (id: string): Drag["target"] => {
@@ -617,7 +617,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         // the task at the end of the list, with the usual top-edge indicator.
         data-add
         className="mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
-        style={{ paddingLeft: GUTTER }}
+        style={{ paddingLeft: 0 }}
       >
         <span className="w-6 text-center text-lg leading-none">+</span>
         <span>Add task</span>
@@ -640,7 +640,7 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
         <Row key={t.id} task={t} indent={indent} last={t.id === lastId} />
       ))}
       {doneTasks.length > 0 && (
-        <li style={{ marginLeft: indent, paddingLeft: GUTTER }}>
+        <li style={{ marginLeft: indent }}>
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
@@ -728,7 +728,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         data-done={isDone || undefined}
         onPointerDown={(e) => ctx.beginDrag(t.id, e)}
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
-        style={{ marginLeft: indent, paddingLeft: GUTTER }}
+        style={{ marginLeft: indent, paddingLeft: hasChildren ? GUTTER : 0 }}
       >
         {hasChildren && (
           <button
