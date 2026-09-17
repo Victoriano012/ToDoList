@@ -20,7 +20,8 @@ const INDENT = 16;
 const GUTTER = 20;
 
 // "after-block" targets the spacer under a parent's subtasks (sibling after the
-// parent); "end" targets the space below the whole list (last root task).
+// parent); "end" targets the "+ Add task" row and the space below the last row
+// (last root task).
 type DropZone = "before" | "after" | "into" | "after-block" | "end";
 type Drag = { id: string; y: number; target: { id: string | null; zone: DropZone } | null };
 
@@ -107,6 +108,8 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     if (kids.length && !x.collapsed) return { id: kids[0].id, zone: "before" };
     const next = byId(rows[i + 1]?.dataset.row);
     if (next && next.parentId === x.parentId) return { id: next.id, zone: "before" };
+    // Below the last root row the "+ Add task" row is the one that follows.
+    if (!next && x.parentId === null) return { id: null, zone: "end" };
     return { id, zone: "after" };
   }
   for (const el of document.querySelectorAll<HTMLElement>("[data-gap]")) {
@@ -538,9 +541,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     <TasksCtx.Provider value={ctx}>
       <div
         data-target={drag?.target ? `${drag.target.zone}:${drag.target.id ?? ""}` : undefined}
-        className={`${drag ? "select-none" : ""} ${
-          drag?.target?.zone === "end" ? "shadow-[inset_0_-2px_0_0_var(--accent)]" : ""
-        }`}
+        className={drag ? "select-none" : ""}
       >
         <List parentId={null} indent={0} />
       </div>
@@ -555,7 +556,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       <button
         type="button"
         onClick={() => add(null)}
-        className="mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
+        // Acts as the row after the last root task: dropping "before" it puts
+        // the task at the end of the list, with the usual top-edge indicator.
+        className={`mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover ${
+          drag?.target?.zone === "end" ? "shadow-[inset_0_2px_0_0_var(--accent)]" : ""
+        }`}
         style={{ paddingLeft: GUTTER }}
       >
         <span className="w-6 text-center text-lg leading-none">+</span>
