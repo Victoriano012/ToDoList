@@ -24,7 +24,7 @@ const GUTTER = 20;
 // root task).
 type DropZone = "before" | "after" | "into" | "end";
 // `mark` places the insertion marker (viewport coords): the border line at `y`,
-// from the content x of the level the task lands on to the row's right edge.
+// spanning the row it sits on (from its indent, gutter included, to its right edge).
 type Mark = { x: number; y: number; w: number };
 // The ghost is drawn at (x + dx, y + dy): it appears over the row's title and
 // keeps that offset from the pointer for the whole drag.
@@ -108,8 +108,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const byId = (id: string | undefined) => tasks.find((t) => t.id === id);
   const markAt = (el: HTMLElement, edge: "top" | "bottom"): Mark => {
     const r = el.getBoundingClientRect();
-    const x = r.left + parseFloat(el.style.paddingLeft);
-    return { x, y: r[edge], w: r.right - x };
+    return { x: r.left, y: r[edge], w: r.width };
   };
   const before = (id: string): Drag["target"] => {
     const el = rows.find((row) => row.dataset.row === id)!;
