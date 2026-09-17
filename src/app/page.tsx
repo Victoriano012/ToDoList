@@ -9,10 +9,7 @@ export default async function Home() {
   if (!session?.user) {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">ToDo</h1>
-          <p className="text-sm text-muted">Nested tasks, kept simple.</p>
-        </div>
+        <h1 className="text-[62px] font-semibold leading-none tracking-tight sm:text-[78px]">ToDo</h1>
         <form
           action={async () => {
             "use server";
