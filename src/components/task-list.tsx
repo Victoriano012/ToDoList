@@ -417,7 +417,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       let started = false;
       let raf = 0;
       let startTime = 0;
-      let pinnedY = 0;
+      let pinnedTop = 0;
+      // Where the visible top of the page sits in the document. With the
+      // keyboard open iOS pans the visual viewport instead of scrolling, so
+      // scrollY alone misses the shift that closing it undoes.
+      const vvOffset = () => visualViewport?.offsetTop ?? 0;
 
       const update = (y: number) => {
         const d: Drag = { id, y, target: findTarget(tasksRef.current, id, y) };
@@ -432,9 +436,9 @@ export default function TaskList({ initial }: { initial: Task[] }) {
           if (dy) {
             scrollBy(0, dy);
             update(d.y);
-          } else if (performance.now() - startTime < 400 && scrollY !== pinnedY) {
+          } else if (performance.now() - startTime < 600 && scrollY + vvOffset() !== pinnedTop) {
             // Keep the list still while the keyboard closes.
-            scrollTo(0, pinnedY);
+            scrollTo(0, pinnedTop - vvOffset());
           }
         }
         raf = requestAnimationFrame(tick);
@@ -447,7 +451,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const start = () => {
         started = true;
         startTime = performance.now();
-        pinnedY = scrollY;
+        pinnedTop = scrollY + vvOffset();
         update(startY);
         if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
         row.setPointerCapture(pointerId);
