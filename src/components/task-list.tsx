@@ -339,11 +339,16 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     [patch],
   );
 
-  // Long-press on a row starts a drag; moving first (scroll / text selection) cancels it.
+  // Long-press on a row starts a drag; moving first (scroll / text selection)
+  // cancels it. A plain tap focuses the row's textarea ourselves, because
+  // unfocused textareas are user-select: none (so iOS's native long-press does
+  // nothing on them) and iOS then won't focus them on tap.
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as Element).closest("button")) return;
       const row = e.currentTarget;
+      const textarea = (e.target as Element).closest("textarea");
+      const draggable = !tasksRef.current.find((x) => x.id === id)?.doneAt;
       const pointerId = e.pointerId;
       const startX = e.clientX;
       const startY = e.clientY;
@@ -376,7 +381,6 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const start = () => {
         started = true;
         draggedRef.current = true;
-        getSelection()?.removeAllRanges();
         row.setPointerCapture(pointerId);
         document.addEventListener("touchmove", block, { passive: false });
         document.addEventListener("touchend", block, { passive: false, once: true });
@@ -384,7 +388,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         raf = requestAnimationFrame(tick);
         update(startY);
       };
-      const timer = setTimeout(start, 350);
+      const timer = draggable ? setTimeout(start, 350) : undefined;
 
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
@@ -405,7 +409,14 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         dragRef.current = null;
         setDrag(null);
       };
-      const onUp = () => end(true);
+      const onUp = () => {
+        const tap = !started;
+        end(true);
+        if (tap && textarea && document.activeElement !== textarea) {
+          textarea.focus();
+          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+      };
       const onCancel = () => end(false);
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
@@ -565,9 +576,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
       <div
         data-row={t.id}
         data-done={isDone || undefined}
-        onPointerDown={(e) => {
-          if (!isDone) ctx.beginDrag(t.id, e);
-        }}
+        onPointerDown={(e) => ctx.beginDrag(t.id, e)}
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: indent + GUTTER }}
       >
@@ -630,8 +639,8 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             }
           }}
           className={`min-h-10 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [-webkit-touch-callout:none] placeholder:text-muted/60 ${
-            t.checkable ? "" : "font-semibold"
-          } ${isDone ? "text-muted line-through" : ""}`}
+            ctx.drag ? "select-none" : "select-none focus:select-auto"
+          } ${t.checkable ? "" : "font-semibold"} ${isDone ? "text-muted line-through" : ""}`}
         />
 
         <button
