@@ -432,12 +432,22 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     [patch],
   );
 
-  // Long-press on a row starts a drag; moving first (scroll / text selection)
-  // cancels it. A plain tap on the title swaps it for a textarea and focuses it
+  // Touch/pen: long-press on a row starts a drag; moving first (scroll / text
+  // selection) cancels it. Mouse: moving starts the drag. A plain tap on the title swaps it for a textarea and focuses it
   // synchronously, so the keyboard opens (it counts as a user gesture).
   const beginDrag = useCallback(
     (id: string, e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as Element).closest("button")) return;
+      // Mouse: press-and-move drags, no long-press. A press in the textarea is
+      // left to the browser (caret, text selection). Elsewhere the default is
+      // stopped so no text drag/selection starts; the blur it would have caused
+      // is done by hand.
+      const mouse = e.pointerType === "mouse";
+      if (mouse) {
+        if (e.target instanceof HTMLTextAreaElement) return;
+        e.preventDefault();
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }
       const row = e.currentTarget;
       const title = (e.target as Element).closest("[data-title]");
       const draggable = !tasksRef.current.find((x) => x.id === id)?.doneAt;
@@ -490,12 +500,17 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         document.addEventListener("contextmenu", block);
         raf = requestAnimationFrame(tick);
       };
-      const timer = draggable ? setTimeout(start, 350) : undefined;
+      const timer = draggable && !mouse ? setTimeout(start, 350) : undefined;
 
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
         if (started) update(ev.clientY);
-        else if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 8) end(false);
+        else if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > (mouse ? 6 : 8)) {
+          if (mouse && draggable) {
+            start();
+            update(ev.clientY);
+          } else end(false);
+        }
       };
       const end = (commit: boolean) => {
         clearTimeout(timer);
@@ -568,7 +583,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     <TasksCtx.Provider value={ctx}>
       <div
         data-target={drag?.target ? `${drag.target.zone}:${drag.target.id ?? ""}` : undefined}
-        className={drag ? "select-none" : ""}
+        className={drag ? "cursor-grabbing select-none" : ""}
       >
         <List parentId={null} indent={0} />
       </div>
