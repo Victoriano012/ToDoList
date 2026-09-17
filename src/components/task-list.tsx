@@ -85,7 +85,8 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const skip = descendantsOf(tasks, dragId);
   for (const el of document.querySelectorAll<HTMLElement>("[data-row]")) {
     const id = el.dataset.row!;
-    if (skip.has(id) || el.dataset.done) continue;
+    // Rows inside a closing collapsible are clipped but still have rects.
+    if (skip.has(id) || el.dataset.done || el.closest("[data-closed]")) continue;
     const r = el.getBoundingClientRect();
     if (y < r.top || y > r.bottom) continue;
     const f = (y - r.top) / r.height;
@@ -737,12 +738,30 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
           </svg>
         </button>
       </div>
-      {hasChildren && !t.collapsed && (
-        <>
-          <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
-          {!last && <div className="h-10" />}
-        </>
-      )}
+      <Collapsible open={hasChildren && !t.collapsed}>
+        <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
+        {!last && <div className="h-10" />}
+      </Collapsible>
     </li>
+  );
+}
+
+// Slides children open/closed via the grid-rows trick (no height measuring).
+// Children stay mounted until the closing transition ends.
+function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const [rendered, setRendered] = useState(open);
+  if (open && !rendered) setRendered(true);
+  return (
+    <div
+      data-closed={open ? undefined : ""}
+      style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr" }}
+      className="transition-[grid-template-rows] duration-500 ease-in-out motion-reduce:transition-none"
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === "grid-template-rows" && !open)
+          setRendered(false);
+      }}
+    >
+      <div className="min-h-0 overflow-hidden">{rendered && children}</div>
+    </div>
   );
 }
