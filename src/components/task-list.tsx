@@ -83,18 +83,31 @@ function descendantsOf(tasks: Task[], id: string) {
 
 // Which visible row is under clientY, and whether the pointer is on its top
 // quarter (drop before), bottom quarter (drop after) or middle (nest into).
+// "after" X is the same insertion point as "before" the row that follows it
+// (its first subtask, or its next sibling), so it is normalised to that row and
+// only survives on the last row of a list: one indicator per resulting position.
 function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const skip = descendantsOf(tasks, dragId);
-  let bottom = -Infinity;
-  for (const el of document.querySelectorAll<HTMLElement>("[data-row]")) {
-    const id = el.dataset.row!;
-    // Rows inside a closing collapsible are clipped but still have rects.
-    if (skip.has(id) || el.dataset.done || el.closest("[data-closed]")) continue;
+  // Rows inside a closing collapsible are clipped but still have rects.
+  const rows = [...document.querySelectorAll<HTMLElement>("[data-row]")].filter(
+    (el) => !skip.has(el.dataset.row!) && !el.dataset.done && !el.closest("[data-closed]"),
+  );
+  const byId = (id: string | undefined) => tasks.find((t) => t.id === id);
+  for (const [i, el] of rows.entries()) {
     const r = el.getBoundingClientRect();
-    bottom = Math.max(bottom, r.bottom);
     if (y < r.top || y > r.bottom) continue;
+    const id = el.dataset.row!;
     const f = (y - r.top) / r.height;
-    return { id, zone: f < 0.25 ? "before" : f > 0.75 ? "after" : "into" };
+    if (f < 0.25) return { id, zone: "before" };
+    if (f <= 0.75) return { id, zone: "into" };
+    const x = byId(id)!;
+    const kids = tasks
+      .filter((t) => t.parentId === id && !t.doneAt && t.id !== dragId)
+      .sort((a, b) => a.position - b.position);
+    if (kids.length && !x.collapsed) return { id: kids[0].id, zone: "before" };
+    const next = byId(rows[i + 1]?.dataset.row);
+    if (next && next.parentId === x.parentId) return { id: next.id, zone: "before" };
+    return { id, zone: "after" };
   }
   for (const el of document.querySelectorAll<HTMLElement>("[data-gap]")) {
     const id = el.dataset.gap!;
@@ -102,6 +115,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     const r = el.getBoundingClientRect();
     if (y >= r.top && y <= r.bottom) return { id, zone: "after-block" };
   }
+  const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? -Infinity;
   return y > bottom ? { id: null, zone: "end" } : null;
 }
 
@@ -519,6 +533,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   return (
     <TasksCtx.Provider value={ctx}>
       <div
+        data-target={drag?.target ? `${drag.target.zone}:${drag.target.id ?? ""}` : undefined}
         className={`${drag ? "select-none" : ""} ${
           drag?.target?.zone === "end" ? "shadow-[inset_0_-2px_0_0_var(--accent)]" : ""
         }`}
