@@ -50,6 +50,17 @@ function fit(el: HTMLTextAreaElement) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
+// Direct not-done children: a checkable child counts 1; a heading child counts
+// 1 only if it holds a not-done checkable task somewhere below it.
+function countSubtasks(tasks: Task[], id: string): number {
+  let n = 0;
+  for (const t of tasks) {
+    if (t.parentId !== id || t.doneAt) continue;
+    if (t.checkable || countSubtasks(tasks, t.id) > 0) n++;
+  }
+  return n;
+}
+
 function descendantsOf(tasks: Task[], id: string) {
   const set = new Set([id]);
   let grew = true;
@@ -532,6 +543,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
   const { focusRef, draggedRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
+  const hidden = t.collapsed ? countSubtasks(ctx.tasks, t.id) : 0;
   const isDone = !!t.doneAt;
   const zone = ctx.drag?.target?.id === t.id ? ctx.drag.target.zone : null;
   const dropCls =
@@ -613,14 +625,20 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             style={{ left: indent }}
             aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              className={`transition-transform ${t.collapsed ? "" : "rotate-90"}`}
-            >
-              <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
+            {t.collapsed && hidden > 0 ? (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-muted text-[10px] leading-none text-muted">
+                {hidden}
+              </span>
+            ) : (
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                className={`transition-transform ${t.collapsed ? "" : "rotate-90"}`}
+              >
+                <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            )}
           </button>
         )}
 
