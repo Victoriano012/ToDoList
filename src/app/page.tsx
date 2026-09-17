@@ -10,7 +10,7 @@ export default async function Home() {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
         <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-2xl font-semibold">ToDo</h1>
+          <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">ToDo</h1>
           <p className="text-sm text-muted">Nested tasks, kept simple.</p>
         </div>
         <form
