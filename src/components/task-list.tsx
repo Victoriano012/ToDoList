@@ -24,10 +24,12 @@ const GUTTER = 20;
 type DropZone = "before" | "after" | "into" | "end";
 // `above` is the row whose bottom edge touches a "before" target's top edge; the
 // indicator is drawn along both borders so the insertion point reads as one.
+// `left` is where the indicator starts: the content x of the level the task
+// lands on (the target row's padding-left).
 type Drag = {
   id: string;
   y: number;
-  target: { id: string | null; zone: DropZone; above?: string } | null;
+  target: { id: string | null; zone: DropZone; above?: string; left: number } | null;
 };
 
 type Ctx = {
@@ -99,13 +101,14 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     (el) => !skip.has(el.dataset.row!) && !el.dataset.done && !el.closest("[data-closed]"),
   );
   const byId = (id: string | undefined) => tasks.find((t) => t.id === id);
+  const leftOf = (el: HTMLElement) => parseFloat(el.style.paddingLeft);
   const before = (id: string): Drag["target"] => {
     const j = rows.findIndex((el) => el.dataset.row === id);
     const top = rows[j].getBoundingClientRect().top;
     const prev = rows[j - 1];
     const above =
       prev && Math.abs(prev.getBoundingClientRect().bottom - top) < 1 ? prev.dataset.row : undefined;
-    return { id, zone: "before", above };
+    return { id, zone: "before", above, left: leftOf(rows[j]) };
   };
   for (const [i, el] of rows.entries()) {
     const r = el.getBoundingClientRect();
@@ -113,7 +116,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     const id = el.dataset.row!;
     const f = (y - r.top) / r.height;
     if (f < 0.25) return before(id);
-    if (f <= 0.75) return { id, zone: "into" };
+    if (f <= 0.75) return { id, zone: "into", left: 0 };
     const x = byId(id)!;
     const kids = tasks
       .filter((t) => t.parentId === id && !t.doneAt && t.id !== dragId)
@@ -122,8 +125,8 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     const next = byId(rows[i + 1]?.dataset.row);
     if (next && next.parentId === x.parentId) return before(next.id);
     // Below the last root row the "+ Add task" row is the one that follows.
-    if (!next && x.parentId === null) return { id: null, zone: "end" };
-    return { id, zone: "after" };
+    if (!next && x.parentId === null) return { id: null, zone: "end", left: GUTTER };
+    return { id, zone: "after", left: leftOf(el) };
   }
   // The spacer under a parent's subtasks means "sibling after the parent", which
   // is the same insertion point as "before" the parent's next sibling.
@@ -140,7 +143,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     return next ? before(next.dataset.row!) : null;
   }
   const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? -Infinity;
-  return y > bottom ? { id: null, zone: "end" } : null;
+  return y > bottom ? { id: null, zone: "end", left: GUTTER } : null;
 }
 
 export default function TaskList({ initial }: { initial: Task[] }) {
@@ -578,11 +581,12 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         onClick={() => add(null)}
         // Acts as the row after the last root task: dropping "before" it puts
         // the task at the end of the list, with the usual top-edge indicator.
-        className={`mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover ${
-          drag?.target?.zone === "end" ? "shadow-[inset_0_2px_0_0_var(--accent)]" : ""
-        }`}
+        className="relative mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
         style={{ paddingLeft: GUTTER }}
       >
+        {drag?.target?.zone === "end" && (
+          <DropLine left={GUTTER} className="shadow-[inset_0_2px_0_0_var(--accent)]" />
+        )}
         <span className="w-6 text-center text-lg leading-none">+</span>
         <span>Add task</span>
       </button>
@@ -629,25 +633,21 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
   const hasChildren = ctx.tasks.some((x) => x.parentId === t.id);
   const hidden = t.collapsed ? countSubtasks(ctx.tasks, t.id) : 0;
   const isDone = !!t.doneAt;
-  const zone = ctx.drag?.target?.id === t.id ? ctx.drag.target.zone : null;
+  const target = ctx.drag?.target;
+  const zone = target?.id === t.id ? target.zone : null;
   // A line shared by two touching rows is 1px on each so the pair reads as
   // one 2px line; a line drawn on a single edge is the full 2px.
-  const topLine = "shadow-[inset_0_2px_0_0_var(--accent)]";
-  const bottomLine = "shadow-[inset_0_-2px_0_0_var(--accent)]";
-  const dropCls =
+  const line =
     zone === "before"
-      ? ctx.drag?.target?.above
+      ? target?.above
         ? "shadow-[inset_0_1px_0_0_var(--accent)]"
-        : topLine
-      : ctx.drag?.target?.above === t.id
+        : "shadow-[inset_0_2px_0_0_var(--accent)]"
+      : target?.above === t.id
         ? "shadow-[inset_0_-1px_0_0_var(--accent)]"
         : zone === "after"
-          ? bottomLine
-          : zone === "into"
-          ? "bg-accent/15"
-          : ctx.drag?.id === t.id
-            ? "opacity-40"
-            : "";
+          ? "shadow-[inset_0_-2px_0_0_var(--accent)]"
+          : null;
+  const dropCls = zone === "into" ? "bg-accent/15" : ctx.drag?.id === t.id ? "opacity-40" : "";
 
   useEffect(() => {
     if (ref.current) fit(ref.current);
@@ -712,6 +712,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: indent + GUTTER }}
       >
+        {line && <DropLine left={target!.left} className={line} />}
         {hasChildren && (
           <button
             type="button"
@@ -821,6 +822,17 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         )}
       </Collapsible>
     </li>
+  );
+}
+
+// The drop indicator: an overlay hugging the row's right rounded corner whose
+// inset shadow draws the line on its top or bottom edge, starting at `left`.
+function DropLine({ left, className }: { left: number; className: string }) {
+  return (
+    <div
+      className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-md ${className}`}
+      style={{ left }}
+    />
   );
 }
 
