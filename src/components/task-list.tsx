@@ -623,14 +623,20 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
   const hidden = t.collapsed ? countSubtasks(ctx.tasks, t.id) : 0;
   const isDone = !!t.doneAt;
   const zone = ctx.drag?.target?.id === t.id ? ctx.drag.target.zone : null;
+  // A line shared by two touching rows is 1px on each so the pair reads as
+  // one 2px line; a line drawn on a single edge is the full 2px.
   const topLine = "shadow-[inset_0_2px_0_0_var(--accent)]";
   const bottomLine = "shadow-[inset_0_-2px_0_0_var(--accent)]";
   const dropCls =
     zone === "before"
-      ? topLine
-      : zone === "after" || ctx.drag?.target?.above === t.id
-        ? bottomLine
-        : zone === "into"
+      ? ctx.drag?.target?.above
+        ? "shadow-[inset_0_1px_0_0_var(--accent)]"
+        : topLine
+      : ctx.drag?.target?.above === t.id
+        ? "shadow-[inset_0_-1px_0_0_var(--accent)]"
+        : zone === "after"
+          ? bottomLine
+          : zone === "into"
           ? "bg-accent/15"
           : ctx.drag?.id === t.id
             ? "opacity-40"
