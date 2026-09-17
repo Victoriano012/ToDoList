@@ -8,7 +8,7 @@ export default async function Home() {
   const session = await auth();
   if (!session?.user) {
     return (
-      <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-8 p-6 pb-[calc(1.5rem+8dvh)]">
+      <main className="flex min-h-[100svh] flex-col items-center justify-center gap-8 p-6 pb-[calc(1.5rem+8svh)]">
         <h1 className="text-[62px] font-semibold leading-none tracking-tight sm:text-[78px]">ToDo</h1>
         <form
           action={async () => {
