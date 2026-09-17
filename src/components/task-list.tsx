@@ -558,11 +558,10 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         onClick={() => add(null)}
         // Acts as the row after the last root task: dropping "before" it puts
         // the task at the end of the list, with the usual top-edge indicator.
-        className={`mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover ${
-          drag?.target?.zone === "end" ? "shadow-[inset_0_2px_0_0_var(--accent)]" : ""
-        }`}
+        className="relative mt-5 flex h-10 w-full items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
         style={{ paddingLeft: GUTTER }}
       >
+        {drag?.target?.zone === "end" && <DropLine left={0} edge="top" />}
         <span className="w-6 text-center text-lg leading-none">+</span>
         <span>Add task</span>
       </button>
@@ -610,16 +609,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
   const hidden = t.collapsed ? countSubtasks(ctx.tasks, t.id) : 0;
   const isDone = !!t.doneAt;
   const zone = ctx.drag?.target?.id === t.id ? ctx.drag.target.zone : null;
-  const dropCls =
-    zone === "before"
-      ? "shadow-[inset_0_2px_0_0_var(--accent)]"
-      : zone === "after"
-        ? "shadow-[inset_0_-2px_0_0_var(--accent)]"
-        : zone === "into"
-          ? "bg-accent/15"
-          : ctx.drag?.id === t.id
-            ? "opacity-40"
-            : "";
+  const dropCls = zone === "into" ? "bg-accent/15" : ctx.drag?.id === t.id ? "opacity-40" : "";
 
   useEffect(() => {
     if (ref.current) fit(ref.current);
@@ -684,6 +674,8 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
         style={{ paddingLeft: indent + GUTTER }}
       >
+        {zone === "before" && <DropLine left={indent} edge="top" />}
+        {zone === "after" && <DropLine left={indent} edge="bottom" />}
         {hasChildren && (
           <button
             type="button"
@@ -789,15 +781,34 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
       <Collapsible open={hasChildren && !t.collapsed}>
         <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
         {!last && (
-          <div
-            data-gap={t.id}
-            className={`h-10 ${
-              zone === "after-block" ? "shadow-[inset_0_2px_0_0_var(--accent)]" : ""
-            }`}
-          />
+          <div data-gap={t.id} className="relative h-10">
+            {zone === "after-block" && <DropLine left={indent} edge="top" />}
+          </div>
         )}
       </Collapsible>
     </li>
+  );
+}
+
+// The insertion marker, >------<: one line with inward caps, drawn just inside
+// the edge of the element after (or before) the drop, starting at the indent
+// the dropped task will land on. Inside rather than centred on the edge so a
+// Collapsible's overflow-hidden can't clip it.
+function DropLine({ left, edge }: { left: number; edge: "top" | "bottom" }) {
+  const cap = (d: string) => (
+    <svg width="8" height="10" viewBox="0 0 8 10" className="shrink-0">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+  return (
+    <div
+      className="pointer-events-none absolute right-1 z-10 flex h-2.5 items-center text-accent"
+      style={{ left, [edge]: 0 }}
+    >
+      {cap("M1 1l4 4-4 4")}
+      <div className="h-0.5 flex-1 bg-accent" />
+      {cap("M7 1L3 5l4 4")}
+    </div>
   );
 }
 
