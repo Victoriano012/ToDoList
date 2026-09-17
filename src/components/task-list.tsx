@@ -45,6 +45,11 @@ type Ctx = {
 const TasksCtx = createContext<Ctx>(null!);
 const doneKey = (parentId: string | null) => parentId ?? "root";
 
+function fit(el: HTMLTextAreaElement) {
+  el.style.height = "0px";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 function descendantsOf(tasks: Task[], id: string) {
   const set = new Set([id]);
   let grew = true;
@@ -541,11 +546,22 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             : "";
 
   useEffect(() => {
+    if (ref.current) fit(ref.current);
+  }, [t.title]);
+
+  // Width changes too (heading toggle, indent after a drop, orientation).
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [t.title]);
+    let width = -1;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      fit(el);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (focusRef.current === t.id && ref.current) {
@@ -646,7 +662,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
               e.currentTarget.blur();
             }
           }}
-          className={`min-h-10 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none [-webkit-touch-callout:none] placeholder:text-muted/60 ${
+          className={`min-h-10 flex-1 resize-none overflow-hidden bg-transparent py-2 text-base leading-6 outline-none [-webkit-touch-callout:none] placeholder:text-muted/60 ${
             ctx.drag ? "select-none" : "select-none focus:select-auto"
           } ${t.checkable ? "" : "font-semibold"} ${isDone ? "text-muted line-through" : ""}`}
         />
