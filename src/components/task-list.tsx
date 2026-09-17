@@ -26,10 +26,14 @@ type DropZone = "before" | "after" | "into" | "end";
 // `mark` places the insertion marker (viewport coords): the border line at `y`,
 // from the content x of the level the task lands on to the row's right edge.
 type Mark = { x: number; y: number; w: number };
+// The ghost is drawn at (x + dx, y + dy): it appears over the row's title and
+// keeps that offset from the pointer for the whole drag.
 type Drag = {
   id: string;
   x: number;
   y: number;
+  dx: number;
+  dy: number;
   target: { id: string | null; zone: DropZone; mark?: Mark } | null;
 };
 
@@ -465,8 +469,10 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       // scrollY alone misses the shift that closing it undoes.
       const vvOffset = () => visualViewport?.offsetTop ?? 0;
 
+      let dx = 0;
+      let dy = 0;
       const update = (x: number, y: number) => {
-        const d: Drag = { id, x, y, target: findTarget(tasksRef.current, id, y) };
+        const d: Drag = { id, x, y, dx, dy, target: findTarget(tasksRef.current, id, y) };
         dragRef.current = d;
         setDrag(d);
       };
@@ -492,6 +498,12 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const block = (ev: Event) => ev.preventDefault();
       const start = () => {
         started = true;
+        // Title and ghost both have py-2; the ghost adds px-3 and a 1px border.
+        const tr = (row.querySelector("[data-title]") ?? document.getElementById(`title-${id}`))?.getBoundingClientRect();
+        if (tr) {
+          dx = tr.left - 13 - startX;
+          dy = tr.top - 1 - startY;
+        }
         startTime = performance.now();
         pinnedTop = scrollY + vvOffset();
         update(startX, startY);
@@ -592,8 +604,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       {drag?.target?.mark && <DropMark {...drag.target.mark} />}
       {dragged && (
         <div
-          className="pointer-events-none fixed z-50 max-w-[75vw] -translate-x-1/2 truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
-          style={{ left: drag.x, top: drag.y - 44 }}
+          className="pointer-events-none fixed z-50 max-w-[75vw] truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
+          style={{ left: drag.x + drag.dx, top: drag.y + drag.dy }}
         >
           {dragged.title || (dragged.checkable ? "New task" : "Heading")}
         </div>
