@@ -19,8 +19,10 @@ import type { Task, TaskPatch } from "@/lib/types";
 const INDENT = 16;
 const GUTTER = 20;
 
-type DropZone = "before" | "after" | "into";
-type Drag = { id: string; y: number; target: { id: string; zone: DropZone } | null };
+// "after-block" targets the spacer under a parent's subtasks (sibling after the
+// parent); "end" targets the space below the whole list (last root task).
+type DropZone = "before" | "after" | "into" | "after-block" | "end";
+type Drag = { id: string; y: number; target: { id: string | null; zone: DropZone } | null };
 
 type Ctx = {
   tasks: Task[];
@@ -83,16 +85,24 @@ function descendantsOf(tasks: Task[], id: string) {
 // quarter (drop before), bottom quarter (drop after) or middle (nest into).
 function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const skip = descendantsOf(tasks, dragId);
+  let bottom = -Infinity;
   for (const el of document.querySelectorAll<HTMLElement>("[data-row]")) {
     const id = el.dataset.row!;
     // Rows inside a closing collapsible are clipped but still have rects.
     if (skip.has(id) || el.dataset.done || el.closest("[data-closed]")) continue;
     const r = el.getBoundingClientRect();
+    bottom = Math.max(bottom, r.bottom);
     if (y < r.top || y > r.bottom) continue;
     const f = (y - r.top) / r.height;
     return { id, zone: f < 0.25 ? "before" : f > 0.75 ? "after" : "into" };
   }
-  return null;
+  for (const el of document.querySelectorAll<HTMLElement>("[data-gap]")) {
+    const id = el.dataset.gap!;
+    if (skip.has(id) || el.closest("[data-closed]")) continue;
+    const r = el.getBoundingClientRect();
+    if (y >= r.top && y <= r.bottom) return { id, zone: "after-block" };
+  }
+  return y > bottom ? { id: null, zone: "end" } : null;
 }
 
 export default function TaskList({ initial }: { initial: Task[] }) {
@@ -339,27 +349,34 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     (d: Drag) => {
       if (!d.target) return;
       const ts = tasksRef.current;
-      const target = ts.find((x) => x.id === d.target!.id)!;
+      const { zone } = d.target;
       const childrenOf = (pid: string | null) =>
         ts.filter((x) => x.parentId === pid && !x.doneAt && x.id !== d.id).sort((a, b) => a.position - b.position);
+      const lastPos = (pid: string | null) =>
+        Math.max(0, ...ts.filter((x) => x.parentId === pid).map((x) => x.position)) + 1;
       let parentId: string | null;
       let position: number;
-      if (d.target.zone === "into") {
-        parentId = target.id;
-        position = Math.max(0, ...ts.filter((x) => x.parentId === target.id).map((x) => x.position)) + 1;
-        if (target.collapsed) patch(target.id, { collapsed: false });
-      } else if (d.target.zone === "before") {
-        parentId = target.parentId;
-        const sib = childrenOf(parentId);
-        const prev = sib[sib.findIndex((x) => x.id === target.id) - 1];
-        position = prev ? (prev.position + target.position) / 2 : target.position - 1;
+      if (zone === "end") {
+        parentId = null;
+        position = lastPos(null);
       } else {
+        const target = ts.find((x) => x.id === d.target!.id)!;
         const kids = childrenOf(target.id);
-        if (kids.length && !target.collapsed) {
+        if (zone === "into") {
+          parentId = target.id;
+          position = lastPos(target.id);
+          if (target.collapsed) patch(target.id, { collapsed: false });
+        } else if (zone === "before") {
+          parentId = target.parentId;
+          const sib = childrenOf(parentId);
+          const prev = sib[sib.findIndex((x) => x.id === target.id) - 1];
+          position = prev ? (prev.position + target.position) / 2 : target.position - 1;
+        } else if (zone === "after" && kids.length && !target.collapsed) {
           // Below an expanded parent means "first subtask".
           parentId = target.id;
           position = kids[0].position - 1;
         } else {
+          // "after" a leaf, or "after-block" (the spacer under its subtasks).
           parentId = target.parentId;
           const sib = childrenOf(parentId);
           const next = sib[sib.findIndex((x) => x.id === target.id) + 1];
@@ -501,7 +518,11 @@ export default function TaskList({ initial }: { initial: Task[] }) {
 
   return (
     <TasksCtx.Provider value={ctx}>
-      <div className={drag ? "select-none" : ""}>
+      <div
+        className={`${drag ? "select-none" : ""} ${
+          drag?.target?.zone === "end" ? "shadow-[inset_0_-2px_0_0_var(--accent)]" : ""
+        }`}
+      >
         <List parentId={null} indent={0} />
       </div>
       {dragged && (
@@ -743,7 +764,14 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
       </div>
       <Collapsible open={hasChildren && !t.collapsed}>
         <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
-        {!last && <div className="h-10" />}
+        {!last && (
+          <div
+            data-gap={t.id}
+            className={`h-10 ${
+              zone === "after-block" ? "shadow-[inset_0_2px_0_0_var(--accent)]" : ""
+            }`}
+          />
+        )}
       </Collapsible>
     </li>
   );
