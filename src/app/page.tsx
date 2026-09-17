@@ -47,7 +47,7 @@ export default async function Home() {
 
   const tasks = await listTasks();
   return (
-    <main className="mx-auto max-w-2xl px-3 pb-[70vh] pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
+    <main className="mx-auto max-w-2xl px-3 pb-[70vh] pt-[calc(env(safe-area-inset-top)+5rem)] sm:px-6">
       <header className="mb-4 flex items-center justify-between px-2">
         <h1 className="text-xl font-semibold">ToDo</h1>
         <form
