@@ -13,9 +13,9 @@ import {
 import { createTask, deleteTask, updateTask } from "@/lib/tasks";
 import type { Task, TaskPatch } from "@/lib/types";
 
-// Children indent by INDENT; the collapse arrow hangs in a GUTTER left of every
-// row so a parent's text and its children's text never line up.
-const INDENT = 32;
+// Children of a heading indent by INDENT, children of a checkable task by
+// 2 * INDENT; the collapse arrow hangs in a GUTTER left of every row.
+const INDENT = 16;
 const GUTTER = 20;
 
 type DropZone = "before" | "after" | "into";
@@ -449,7 +449,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   return (
     <TasksCtx.Provider value={ctx}>
       <div className={drag ? "select-none" : ""}>
-        <List parentId={null} depth={0} />
+        <List parentId={null} indent={0} />
       </div>
       {dragged && (
         <div
@@ -472,7 +472,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
   );
 }
 
-function List({ parentId, depth }: { parentId: string | null; depth: number }) {
+function List({ parentId, indent }: { parentId: string | null; indent: number }) {
   const { active, done, shownDone, toggleShownDone } = useContext(TasksCtx);
   const activeTasks = active(parentId);
   const doneTasks = done(parentId);
@@ -483,10 +483,10 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
   return (
     <ul>
       {activeTasks.map((t) => (
-        <Row key={t.id} task={t} depth={depth} last={t.id === lastId} />
+        <Row key={t.id} task={t} indent={indent} last={t.id === lastId} />
       ))}
       {doneTasks.length > 0 && (
-        <li style={{ paddingLeft: depth * INDENT + GUTTER }}>
+        <li style={{ paddingLeft: indent + GUTTER }}>
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
@@ -498,12 +498,12 @@ function List({ parentId, depth }: { parentId: string | null; depth: number }) {
           </button>
         </li>
       )}
-      {shown && doneTasks.map((t) => <Row key={t.id} task={t} depth={depth} last={t.id === lastId} />)}
+      {shown && doneTasks.map((t) => <Row key={t.id} task={t} indent={indent} last={t.id === lastId} />)}
     </ul>
   );
 }
 
-function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolean }) {
+function Row({ task: t, indent, last }: { task: Task; indent: number; last: boolean }) {
   const ctx = useContext(TasksCtx);
   const { focusRef, draggedRef } = ctx;
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -569,7 +569,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
           if (!isDone) ctx.beginDrag(t.id, e);
         }}
         className={`relative flex items-start gap-1 rounded-md hover:bg-hover ${dropCls}`}
-        style={{ paddingLeft: depth * INDENT + GUTTER }}
+        style={{ paddingLeft: indent + GUTTER }}
       >
         {hasChildren && (
           <button
@@ -577,7 +577,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
             tabIndex={-1}
             onClick={() => ctx.patch(t.id, { collapsed: !t.collapsed })}
             className="absolute top-0 flex h-10 w-5 items-center justify-center text-muted"
-            style={{ left: depth * INDENT }}
+            style={{ left: indent }}
             aria-label={t.collapsed ? "Expand" : "Collapse"}
           >
             <svg
@@ -662,7 +662,7 @@ function Row({ task: t, depth, last }: { task: Task; depth: number; last: boolea
       </div>
       {hasChildren && !t.collapsed && (
         <>
-          <List parentId={t.id} depth={depth + 1} />
+          <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
           {!last && <div className="h-10" />}
         </>
       )}
