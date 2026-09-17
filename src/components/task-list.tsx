@@ -354,6 +354,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       const startY = e.clientY;
       let started = false;
       let raf = 0;
+      let startTime = 0;
+      let pinnedY = 0;
       draggedRef.current = false;
 
       const update = (y: number) => {
@@ -369,18 +371,24 @@ export default function TaskList({ initial }: { initial: Task[] }) {
           if (dy) {
             scrollBy(0, dy);
             update(d.y);
+          } else if (performance.now() - startTime < 400 && scrollY !== pinnedY) {
+            // Keep the list still while the keyboard closes.
+            scrollTo(0, pinnedY);
           }
         }
         raf = requestAnimationFrame(tick);
       };
       // touch-action can't change mid-gesture, so page scrolling is blocked here.
       // touchend is blocked so the release doesn't turn into a click that focuses
-      // the textarea (keyboard popping up mid-list). Focus is otherwise left alone
-      // so an open keyboard doesn't close and shift the page while dragging.
+      // the textarea (keyboard popping up mid-list). An open keyboard is dismissed
+      // and the scroll position pinned so the list doesn't jump as it closes.
       const block = (ev: Event) => ev.preventDefault();
       const start = () => {
         started = true;
         draggedRef.current = true;
+        startTime = performance.now();
+        pinnedY = scrollY;
+        if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
         row.setPointerCapture(pointerId);
         document.addEventListener("touchmove", block, { passive: false });
         document.addEventListener("touchend", block, { passive: false, once: true });
