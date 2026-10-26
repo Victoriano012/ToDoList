@@ -97,12 +97,33 @@ function descendantsOf(tasks: Task[], id: string) {
   return set;
 }
 
+// Direct not-done children of `parentId`, in order, without the dragged task:
+// the list the drop inserts into.
+function dropSiblings(tasks: Task[], dragId: string, parentId: string | null) {
+  return tasks
+    .filter((t) => t.parentId === parentId && !t.doneAt && t.id !== dragId)
+    .sort((a, b) => a.position - b.position);
+}
+
+// Where the drop would put the dragged task: its new parent and its index among
+// that parent's other children. "after" only ever reaches here for a target
+// with no open subtasks (locateTarget normalises the rest to "before"), so it
+// is always the slot just past the target.
+function destination(tasks: Task[], dragId: string, t: NonNullable<Drag["target"]>) {
+  if (t.zone === "end") return { parentId: null, index: dropSiblings(tasks, dragId, null).length };
+  const target = tasks.find((x) => x.id === t.id)!;
+  if (t.zone === "into") return { parentId: target.id, index: 0 };
+  const sibs = dropSiblings(tasks, dragId, target.parentId);
+  const i = sibs.findIndex((x) => x.id === target.id);
+  return { parentId: target.parentId, index: t.zone === "before" ? i : i + 1 };
+}
+
 // Which visible row is under clientY, and whether the pointer is on its top
 // quarter (drop before), bottom quarter (drop after) or middle (nest into).
 // "after" X is the same insertion point as "before" the row that follows it
 // (its first subtask, or its next sibling), so it is normalised to that row and
 // only survives on the last row of a list: one indicator per resulting position.
-function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
+function locateTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   const skip = descendantsOf(tasks, dragId);
   // Rows inside a closing collapsible are clipped but still have rects.
   const rows = [...document.querySelectorAll<HTMLElement>("[data-row]")].filter(
@@ -160,6 +181,19 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   }
   const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? -Infinity;
   return y > bottom ? end() : null;
+}
+
+// Drops that would leave the task exactly where it is get no target at all, so
+// neither an indicator nor a write: the slot it already occupies is its index
+// among the siblings the drop would insert it back into.
+function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
+  const t = locateTarget(tasks, dragId, y);
+  if (!t) return null;
+  const dragged = tasks.find((x) => x.id === dragId)!;
+  const { parentId, index } = destination(tasks, dragId, t);
+  if (parentId !== dragged.parentId) return t;
+  const here = dropSiblings(tasks, dragId, dragged.parentId).filter((x) => x.position < dragged.position).length;
+  return index === here ? null : t;
 }
 
 export default function TaskList({ initial }: { initial: Task[] }) {
@@ -406,39 +440,22 @@ export default function TaskList({ initial }: { initial: Task[] }) {
     (d: Drag) => {
       if (!d.target) return;
       const ts = tasksRef.current;
-      const { zone } = d.target;
-      const childrenOf = (pid: string | null) =>
-        ts.filter((x) => x.parentId === pid && !x.doneAt && x.id !== d.id).sort((a, b) => a.position - b.position);
-      let parentId: string | null;
-      let position: number;
-      if (zone === "end") {
-        parentId = null;
-        position = Math.max(0, ...ts.filter((x) => x.parentId === null).map((x) => x.position)) + 1;
-      } else {
-        const target = ts.find((x) => x.id === d.target!.id)!;
-        const kids = childrenOf(target.id);
-        if (zone === "into") {
-          // Becomes the first subtask.
-          parentId = target.id;
-          position = (kids[0]?.position ?? 1) - 1;
-          if (target.collapsed) patch(target.id, { collapsed: false });
-        } else if (zone === "before") {
-          parentId = target.parentId;
-          const sib = childrenOf(parentId);
-          const prev = sib[sib.findIndex((x) => x.id === target.id) - 1];
-          position = prev ? (prev.position + target.position) / 2 : target.position - 1;
-        } else if (zone === "after" && kids.length && !target.collapsed) {
-          // Below an expanded parent means "first subtask".
-          parentId = target.id;
-          position = kids[0].position - 1;
-        } else {
-          // "after" a leaf.
-          parentId = target.parentId;
-          const sib = childrenOf(parentId);
-          const next = sib[sib.findIndex((x) => x.id === target.id) + 1];
-          position = next ? (target.position + next.position) / 2 : target.position + 1;
-        }
-      }
+      const { parentId, index } = destination(ts, d.id, d.target);
+      const sibs = dropSiblings(ts, d.id, parentId);
+      const prev = sibs[index - 1];
+      const next = sibs[index];
+      const position =
+        // At the end of the root list, stay clear of the completed tasks' positions.
+        d.target.zone === "end"
+          ? Math.max(0, ...ts.filter((x) => x.parentId === null).map((x) => x.position)) + 1
+          : prev && next
+            ? (prev.position + next.position) / 2
+            : prev
+              ? prev.position + 1
+              : next
+                ? next.position - 1
+                : 0;
+      if (parentId && ts.find((x) => x.id === parentId)!.collapsed) patch(parentId, { collapsed: false });
       patch(d.id, { parentId, position });
     },
     [patch],
