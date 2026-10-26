@@ -12,11 +12,11 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { createTask, deleteTask, updateTask } from "@/lib/tasks";
-import type { Task, TaskPatch } from "@/lib/types";
+import type { Task, TaskKind, TaskPatch } from "@/lib/types";
 
-// Children of a heading indent by INDENT, children of a checkable task by
-// 2 * INDENT (the row's margin, so its highlight starts there); a row with
-// subtasks adds a GUTTER at its left for the collapse arrow.
+// Children of a heading or text row indent by INDENT, children of a checkable
+// task by 2 * INDENT (the row's margin, so its highlight starts there); a row
+// with subtasks adds a GUTTER at its left for the collapse arrow.
 const INDENT = 16;
 const GUTTER = 20;
 // The row's highlight box (and the drop indicator, which spans it) reaches
@@ -71,16 +71,28 @@ function fit(el: HTMLTextAreaElement) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-// Direct not-done children: a checkable child counts 1; a heading child counts
-// 1 only if it holds a not-done checkable task somewhere below it.
+// Direct not-done children: a checkable child counts 1; a heading or text child
+// counts 1 only if it holds a not-done checkable task somewhere below it.
 function countSubtasks(tasks: Task[], id: string): number {
   let n = 0;
   for (const t of tasks) {
     if (t.parentId !== id || t.doneAt) continue;
-    if (t.checkable || countSubtasks(tasks, t.id) > 0) n++;
+    if (t.kind === "task" || countSubtasks(tasks, t.id) > 0) n++;
   }
   return n;
 }
+
+const KIND_ORDER: TaskKind[] = ["task", "heading", "text"];
+const nextKind = (k: TaskKind) => KIND_ORDER[(KIND_ORDER.indexOf(k) + 1) % KIND_ORDER.length];
+
+// A text row shows nothing when empty: no placeholder, in the row or the textarea.
+const placeholder = (k: TaskKind) => (k === "task" ? "New task" : k === "heading" ? "Heading" : "");
+
+const KIND_BTN: Record<TaskKind, string> = {
+  task: "text-muted",
+  heading: "font-bold text-foreground",
+  text: "text-muted/50 italic",
+};
 
 function descendantsOf(tasks: Task[], id: string) {
   const set = new Set([id]);
@@ -317,7 +329,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
         id: crypto.randomUUID(),
         parentId,
         title: "",
-        checkable: true,
+        kind: "task",
         doneAt: null,
         collapsed: false,
         position,
@@ -630,7 +642,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
           className="pointer-events-none fixed z-50 max-w-[75vw] truncate rounded-md border border-line bg-background px-3 py-2 text-base shadow-lg"
           style={{ left: drag.x + drag.dx, top: drag.y + drag.dy }}
         >
-          {dragged.title || (dragged.checkable ? "New task" : "Heading")}
+          {dragged.title || placeholder(dragged.kind)}
         </div>
       )}
       <button
@@ -717,9 +729,9 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
     }
   });
 
-  const titleCls = `min-h-10 flex-1 py-2 text-base leading-6 ${t.checkable ? "" : "font-semibold"} ${
-    isDone ? "text-muted line-through" : ""
-  }`;
+  const titleCls = `min-h-10 flex-1 py-2 text-base leading-6 ${
+    t.kind === "heading" ? "font-semibold" : ""
+  } ${isDone ? "text-muted line-through" : ""}`;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter") {
@@ -779,7 +791,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
           </button>
         )}
 
-        {t.checkable ? (
+        {t.kind === "task" ? (
           <button
             type="button"
             tabIndex={-1}
@@ -809,7 +821,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             ref={ref}
             rows={1}
             value={t.title}
-            placeholder={t.checkable ? "New task" : "Heading"}
+            placeholder={placeholder(t.kind)}
             onChange={(e) => ctx.saveTitle(t.id, e.target.value.replace(/\n/g, ""))}
             onKeyDown={onKeyDown}
             onBlur={() => ctx.stopEditing(t.id)}
@@ -825,7 +837,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
             data-title
             className={`${titleCls} min-w-0 select-none whitespace-pre-wrap break-words [-webkit-touch-callout:none]`}
           >
-            {t.title || <span className="text-muted/60">{t.checkable ? "New task" : "Heading"}</span>}
+            {t.title || <span className="text-muted/60">{placeholder(t.kind)}</span>}
           </div>
         )}
 
@@ -833,11 +845,11 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
           type="button"
           tabIndex={-1}
           onPointerDown={(e) => e.preventDefault()}
-          onClick={() => ctx.patch(t.id, { checkable: !t.checkable, ...(t.checkable ? { doneAt: null } : {}) })}
-          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg ${
-            t.checkable ? "text-muted" : "font-bold text-foreground"
-          }`}
-          aria-label="Toggle heading"
+          onClick={() =>
+            ctx.patch(t.id, { kind: nextKind(t.kind), ...(t.kind === "task" ? { doneAt: null } : {}) })
+          }
+          className={`flex h-10 w-8 shrink-0 items-center justify-center text-lg ${KIND_BTN[t.kind]}`}
+          aria-label={`Change to ${nextKind(t.kind)}`}
         >
           #
         </button>
@@ -856,7 +868,7 @@ function Row({ task: t, indent, last }: { task: Task; indent: number; last: bool
         </button>
       </div>
       <Collapsible open={hasChildren && !t.collapsed}>
-        <List parentId={t.id} indent={indent + (t.checkable ? 2 * INDENT : INDENT)} />
+        <List parentId={t.id} indent={indent + (t.kind === "task" ? 2 * INDENT : INDENT)} />
         {!last && (
           <div data-gap={t.id} className="h-10" />
         )}

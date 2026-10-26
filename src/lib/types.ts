@@ -1,13 +1,15 @@
+export type TaskKind = "task" | "heading" | "text";
+
 export type Task = {
   id: string;
   parentId: string | null;
   title: string;
-  checkable: boolean;
+  kind: TaskKind;
   doneAt: string | null; // ISO timestamp, null = not done
   collapsed: boolean;
   position: number;
 };
 
 export type TaskPatch = Partial<
-  Pick<Task, "parentId" | "title" | "checkable" | "doneAt" | "collapsed" | "position">
+  Pick<Task, "parentId" | "title" | "kind" | "doneAt" | "collapsed" | "position">
 >;
