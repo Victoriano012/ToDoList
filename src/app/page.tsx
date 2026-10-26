@@ -1,5 +1,9 @@
+import { cookies } from "next/headers";
 import { auth, signIn, signOut } from "@/auth";
+import ListSwitcher from "@/components/list-switcher";
 import TaskList from "@/components/task-list";
+import { createList, listLists } from "@/lib/lists";
+import { LIST_COOKIE } from "@/lib/session";
 import { listTasks } from "@/lib/tasks";
 
 export const dynamic = "force-dynamic";
@@ -45,11 +49,16 @@ export default async function Home() {
     );
   }
 
-  const tasks = await listTasks();
+  // New users get a list; everyone else reopens the one in the cookie.
+  let lists = await listLists();
+  if (lists.length === 0) lists = [await createList("ToDo")];
+  const wanted = (await cookies()).get(LIST_COOKIE)?.value;
+  const current = lists.find((l) => l.id === wanted) ?? lists[0];
+  const tasks = await listTasks(current.id);
   return (
     <main className="mx-auto max-w-2xl px-3 pb-[70vh] pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
       <header className="mb-10 flex items-center justify-between px-2">
-        <h1 className="text-xl font-semibold">ToDo</h1>
+        <ListSwitcher lists={lists} currentId={current.id} />
         <form
           action={async () => {
             "use server";
@@ -80,7 +89,7 @@ export default async function Home() {
           </button>
         </form>
       </header>
-      <TaskList initial={tasks} />
+      <TaskList key={current.id} initial={tasks} listId={current.id} />
     </main>
   );
 }

@@ -1,7 +1,14 @@
 export type TaskKind = "task" | "heading" | "text";
 
+export type List = {
+  id: string;
+  name: string;
+  position: number;
+};
+
 export type Task = {
   id: string;
+  listId: string;
   parentId: string | null;
   title: string;
   kind: TaskKind;

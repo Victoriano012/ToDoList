@@ -208,7 +208,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
   return index === here ? null : t;
 }
 
-export default function TaskList({ initial }: { initial: Task[] }) {
+export default function TaskList({ initial, listId }: { initial: Task[]; listId: string }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initial);
   const [shownDone, setShownDone] = useState<Set<string>>(new Set());
@@ -327,6 +327,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       }
       const task: Task = {
         id: crypto.randomUUID(),
+        listId,
         parentId,
         title: "",
         kind: "task",
@@ -338,7 +339,7 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       setTasks((ts) => [...ts, task]);
       run(() => createTask(task));
     },
-    [active, byParent, run, edit],
+    [active, byParent, run, edit, listId],
   );
 
   // Flattened list of rows currently visible on screen, in reading order.
