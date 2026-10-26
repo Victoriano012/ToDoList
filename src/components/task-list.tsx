@@ -117,11 +117,15 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     const el = rows.find((row) => row.dataset.row === id)!;
     return { id, zone: "before", mark: markAt(el, "top") };
   };
-  const end = (): Drag["target"] => ({
-    id: null,
-    zone: "end",
-    mark: markAt(document.querySelector<HTMLElement>("[data-add]")!, "top"),
-  });
+  // Dropped tasks land after the last active root task, which is the divider
+  // above the completed ones when there are any, and the "+ Add task" row
+  // otherwise. Either way the marker keeps a row's width.
+  const end = (): Drag["target"] => {
+    const mark = markAt(document.querySelector<HTMLElement>("[data-add]")!, "top");
+    const divider = document.querySelector<HTMLElement>("[data-root-done-divider]")?.getBoundingClientRect();
+    if (divider) mark.y = divider.top + divider.height / 2;
+    return { id: null, zone: "end", mark };
+  };
   for (const [i, el] of rows.entries()) {
     const r = el.getBoundingClientRect();
     if (y < r.top || y > r.bottom) continue;
@@ -136,7 +140,7 @@ function findTarget(tasks: Task[], dragId: string, y: number): Drag["target"] {
     if (kids.length && !x.collapsed) return before(kids[0].id);
     const next = byId(rows[i + 1]?.dataset.row);
     if (next && next.parentId === x.parentId) return before(next.id);
-    // Below the last root row the "+ Add task" row is the one that follows.
+    // Below the last root row is the end of the full list.
     if (!next && x.parentId === null) return end();
     return { id, zone: "after", mark: markAt(el, "bottom") };
   }
@@ -615,8 +619,8 @@ export default function TaskList({ initial }: { initial: Task[] }) {
       <button
         type="button"
         onClick={() => add(null)}
-        // Acts as the row after the last root task: dropping "before" it puts
-        // the task at the end of the list, with the usual top-edge indicator.
+        // Dropping here puts the task at the end of the list; its top edge gives
+        // the end marker its width (and its position, with no completed tasks).
         data-add
         className="mt-5 flex h-10 items-center gap-1 rounded-md text-left text-muted hover:bg-hover"
         style={{ marginLeft: -PAD, paddingLeft: PAD, width: `calc(100% + ${PAD}px)` }}
@@ -649,7 +653,7 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
             className="group flex h-4 w-full items-center px-2"
             aria-label={shown ? "Hide completed" : "Show completed"}
           >
-            <span className="h-px flex-1 bg-line group-hover:bg-muted" />
+            <span data-root-done-divider={parentId === null || undefined} className="h-px flex-1 bg-line group-hover:bg-muted" />
           </button>
         </li>
       )}
