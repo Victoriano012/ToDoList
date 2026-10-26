@@ -150,13 +150,14 @@ function locateTarget(tasks: Task[], dragId: string, y: number): Drag["target"] 
     const el = rows.find((row) => row.dataset.row === id)!;
     return { id, zone: "before", mark: markAt(el, "top") };
   };
-  // Dropped tasks land after the last active root task, which is the divider
-  // above the completed ones when there are any, and the "+ Add task" row
-  // otherwise. Either way the marker keeps a row's width.
+  // Dropped tasks land after the last active root task: above the divider that
+  // introduces the completed ones when there are any, and above the "+ Add
+  // task" row otherwise. Either way the marker sits on the top edge of that
+  // row, clear of the divider's own line, and keeps a task row's width.
   const end = (): Drag["target"] => {
+    const divider = document.querySelector<HTMLElement>("[data-root-done-divider]");
     const mark = markAt(document.querySelector<HTMLElement>("[data-add]")!, "top");
-    const divider = document.querySelector<HTMLElement>("[data-root-done-divider]")?.getBoundingClientRect();
-    if (divider) mark.y = divider.top + divider.height / 2;
+    if (divider) mark.y = divider.getBoundingClientRect().top;
     return { id: null, zone: "end", mark };
   };
   for (const [i, el] of rows.entries()) {
@@ -680,10 +681,11 @@ function List({ parentId, indent }: { parentId: string | null; indent: number })
           <button
             type="button"
             onClick={() => toggleShownDone(parentId)}
+            data-root-done-divider={parentId === null || undefined}
             className="group flex h-4 w-full items-center px-2"
             aria-label={shown ? "Hide completed" : "Show completed"}
           >
-            <span data-root-done-divider={parentId === null || undefined} className="h-px flex-1 bg-line group-hover:bg-muted" />
+            <span className="h-px flex-1 bg-line group-hover:bg-muted" />
           </button>
         </li>
       )}
