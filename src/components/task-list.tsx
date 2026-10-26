@@ -91,7 +91,7 @@ const placeholder = (k: TaskKind) => (k === "task" ? "New task" : k === "heading
 const KIND_BTN: Record<TaskKind, string> = {
   task: "text-muted",
   heading: "font-bold text-foreground",
-  text: "text-muted/50 italic",
+  text: "text-muted/50",
 };
 
 function descendantsOf(tasks: Task[], id: string) {
